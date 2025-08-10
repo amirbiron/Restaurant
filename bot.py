@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import logging
+import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -533,7 +534,9 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # הפעלת הבוט
-def main():
+async def main():
+    """Initialize and run the bot"""
+    # בניית האפליקציה עם הגדרות מתאימות ל-Python 3.13
     app = Application.builder().token(BOT_TOKEN).build()
     
     # רישום handlers
@@ -543,8 +546,20 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda u, c: handle_contact_process(u, c) if any(key in c.user_data for key in ['contact_step', 'appointment_step', 'human_support']) else handle_text(u, c)))
     
-    # הפעלה
-    app.run_polling()
+    # הפעלה עם polling
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    # המתנה עד לסיום
+    try:
+        await asyncio.Event().wait()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

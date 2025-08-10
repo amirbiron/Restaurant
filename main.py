@@ -26,8 +26,8 @@ async def main():
         logger.info(f"Python version: {sys.version}")
         logger.info(f"Environment: {os.environ.get('RENDER', 'local')}")
         
-        # Run the bot
-        bot_main()
+        # Run the bot (it's now async)
+        await bot_main()
         
     except ImportError as e:
         logger.error(f"Error importing bot module: {e}")
