@@ -3,11 +3,12 @@ services:
     name: telegram-business-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
+    startCommand: gunicorn --bind 0.0.0.0:$PORT simple_bot:app --timeout 120 --workers 1
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN
         sync: false
-        # יש להוסיף את הטוקן של הבוט מ-BotFather בפאנל רנדר
+        # חובה! יש להוסיף את הטוקן של הבוט מ-BotFather בפאנל רנדר
       - key: PYTHON_VERSION
         value: 3.11.0

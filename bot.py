@@ -5,6 +5,7 @@
 """
 
 import os
+import sys
 import json
 import logging
 from datetime import datetime, timedelta
@@ -20,6 +21,12 @@ DATA_FILE = 'data.json'
 
 # טוקן הבוט (מרנדר)
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
+
+# בדיקה שהטוקן קיים
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN is not set in environment variables!")
+    logger.error("Please set the BOT_TOKEN in Render dashboard")
+    sys.exit(1)
 
 # מחלקה לניהול נתונים
 class DataManager:
@@ -527,10 +534,6 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # הפעלת הבוט
 def main():
-    if not BOT_TOKEN:
-        print("שגיאה: לא נמצא BOT_TOKEN")
-        return
-    
     app = Application.builder().token(BOT_TOKEN).build()
     
     # רישום handlers
