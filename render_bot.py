@@ -64,12 +64,12 @@ async def run_telegram_bot():
     global bot_app, bot_running, bot_initializing, bot_error
     
     bot_initializing = True
-    max_retries = 3
+    # Replace fixed retry count with infinite retry using exponential backoff
     retry_count = 0
     
-    while retry_count < max_retries:
+    while True:
         try:
-            logger.info(f"Telegram bot initialization attempt {retry_count + 1}/{max_retries}")
+            logger.info(f"Telegram bot initialization attempt {retry_count + 1}")
             
             # Import bot components
             from bot import BOT_TOKEN
@@ -95,6 +95,7 @@ async def run_telegram_bot():
                 .token(BOT_TOKEN)
                 .connect_timeout(20.0)
                 .read_timeout(20.0)
+                .get_updates_request_timeout(10.0)
                 .build()
             )
 
@@ -137,29 +138,27 @@ async def run_telegram_bot():
             
         except Exception as e:
             retry_count += 1
-            bot_error = str(e)
-            logger.error(f"Bot error (attempt {retry_count}/{max_retries}): {e}")
+            bot_error = f"{e.__class__.__name__}: {e}"
+            logger.exception(f"Bot error (attempt {retry_count}): {e}")
             
-            if retry_count < max_retries:
-                logger.info(f"Retrying in 10 seconds...")
-                await asyncio.sleep(10)
-                
-                # Cleanup
-                if bot_app:
-                    try:
-                        await bot_app.updater.stop()
-                        await bot_app.stop()
-                        await bot_app.shutdown()
-                    except:
-                        pass
-                    bot_app = None
-            else:
-                logger.error("Max retries reached. Bot stopped.")
-                bot_running = False
-                bot_initializing = False
-                break
+            # Exponential backoff with cap
+            backoff_seconds = min(60, 5 * (2 ** (retry_count - 1)))
+            logger.info(f"Retrying in {backoff_seconds} seconds...")
+            await asyncio.sleep(backoff_seconds)
+            
+            # Cleanup
+            if bot_app:
+                try:
+                    await bot_app.updater.stop()
+                    await bot_app.stop()
+                    await bot_app.shutdown()
+                except Exception:
+                    pass
+                bot_app = None
+        
+        # Loop continues for next retry
     
-    # Final cleanup
+    # Final cleanup (unreachable in current loop, kept for safety)
     bot_initializing = False
     if bot_app:
         try:
