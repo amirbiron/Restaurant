@@ -12,6 +12,7 @@ import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from activity_reporter import create_reporter
 
 # הגדרת לוגים
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -28,6 +29,13 @@ if not BOT_TOKEN:
     logger.error("BOT_TOKEN is not set in environment variables!")
     logger.error("Please set the BOT_TOKEN in Render dashboard")
     sys.exit(1)
+
+# Activity reporter (initialized after environment is loaded)
+reporter = create_reporter(
+    mongodb_uri="mongodb+srv://mumin:M43M2TFgLfGvhBwY@muminai.tm6x81b.mongodb.net/?retryWrites=true&w=majority&appName=muminAI",
+    service_id="srv-d2cg2t1r0fns73du6mjg",
+    service_name="Restaurant"
+)
 
 # מחלקה לניהול נתונים
 class DataManager:
@@ -121,6 +129,7 @@ def faq_keyboard():
 
 # הודעת פתיחה
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     user = update.effective_user
     
     # שמירת מנהל ראשון כאדמין
@@ -136,6 +145,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # טיפול בהודעות טקסט (תפריט ראשי)
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     text = update.message.text
     
     if text == '🛍️ קטלוג קצר':
@@ -154,6 +164,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # קטלוג
 async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     catalog_text = """הנה טעימה מהשירותים/מוצרים הפופולריים שלנו:
 
 📦 **חבילת בסיס** - "מתאים להתחלה מהירה"
@@ -182,6 +193,7 @@ async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # קביעת תור
 async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     # תאריכים זמינים לדוגמה
     today = datetime.now()
     dates = []
@@ -202,6 +214,7 @@ async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT
 
 # שאלות ותמיכה
 async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     await update.message.reply_text(
         'שאלות נפוצות – לחצו לקבלת מענה מיידי:',
         reply_markup=faq_keyboard()
@@ -209,6 +222,7 @@ async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # צור קשר
 async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     context.user_data['contact_step'] = 'name'
     await update.message.reply_text(
         'נשמח לחזור אליך 👇\nאנא שתף/י את השם הפרטי:'
@@ -216,6 +230,7 @@ async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # טיפול בלחיצות על כפתורים
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     query = update.callback_query
     await query.answer()
     
@@ -371,6 +386,7 @@ def get_faq_answer(faq_type):
 
 # טיפול בהודעות בתהליך איסוף מידע
 async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     user_data = context.user_data
     text = update.message.text
     
@@ -479,6 +495,7 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
 
 # פקודות מנהל
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     user_id = update.effective_user.id
     
     if user_id != dm.data['settings']['admin_id']:
@@ -511,6 +528,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ייצוא נתונים
 async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
     if update.effective_user.id != dm.data['settings']['admin_id']:
         return
     
