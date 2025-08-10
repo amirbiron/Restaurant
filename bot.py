@@ -309,6 +309,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'השאר/י הודעה קצרה – ונחזור אליך כאן בהקדם 💬'
         )
         context.user_data['human_support'] = True
+    
+    elif data.startswith('int_'):
+        # Handle interest area selection
+        interest_type = data.split('_')[1]
+        interest_names = {
+            'website': 'אתר אינטרנט',
+            'bot': 'בוט/אוטומציה',
+            'marketing': 'שיווק דיגיטלי',
+            'other': 'אחר'
+        }
+        
+        # Save the interest area
+        context.user_data['interest'] = interest_names.get(interest_type, 'אחר')
+        context.user_data['contact_step'] = 'phone'
+        
+        await query.edit_message_text(
+            'תודה! ולבסוף - מספר טלפון:'
+        )
 
 # פונקציות עזר
 def get_package_name(package):
