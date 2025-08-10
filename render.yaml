@@ -3,7 +3,7 @@ services:
     name: telegram-business-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT render_bot:app --timeout 120 --workers 1 --threads 2 --log-level info
+    startCommand: gunicorn --bind 0.0.0.0:$PORT flask_bot:app --timeout 120 --workers 1 --threads 2 --log-level info
     plan: free
     healthCheckPath: /health
     envVars:
