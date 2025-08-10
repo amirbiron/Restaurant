@@ -31,4 +31,4 @@ exec gunicorn \
     --max-requests 1000 \
     --max-requests-jitter 50 \
     --worker-class sync \
-    flask_bot:app
+    app:application
