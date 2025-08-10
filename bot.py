@@ -540,7 +540,7 @@ async def main():
     app = (
         Application.builder()
         .token(BOT_TOKEN)
-        .get_updates_request_timeout(10.0)
+        .get_updates_read_timeout(10.0)
         .build()
     )
 

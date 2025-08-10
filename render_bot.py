@@ -95,7 +95,7 @@ async def run_telegram_bot():
                 .token(BOT_TOKEN)
                 .connect_timeout(20.0)
                 .read_timeout(20.0)
-                .get_updates_request_timeout(10.0)
+                .get_updates_read_timeout(10.0)
                 .build()
             )
 
