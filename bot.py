@@ -538,7 +538,10 @@ async def main():
     """Initialize and run the bot"""
     # בניית האפליקציה עם הגדרות מתאימות ל-Python 3.13
     app = Application.builder().token(BOT_TOKEN).build()
-    
+
+    # Ensure webhook is removed before starting polling
+    await app.bot.delete_webhook(drop_pending_updates=True)
+
     # רישום handlers
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('admin', admin_command))

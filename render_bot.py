@@ -79,6 +79,9 @@ async def run_telegram_bot():
         
         # Create application
         bot_app = Application.builder().token(BOT_TOKEN).build()
+
+        # Ensure webhook is removed before starting polling
+        await bot_app.bot.delete_webhook(drop_pending_updates=True)
         
         # Add handlers
         bot_app.add_handler(CommandHandler('start', start))

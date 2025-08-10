@@ -68,6 +68,9 @@ def run_bot_async():
             
             logger.info("Creating bot application...")
             app = Application.builder().token(BOT_TOKEN).build()
+
+            # Ensure webhook is removed before starting polling
+            await app.bot.delete_webhook(drop_pending_updates=True)
             
             # Add handlers
             app.add_handler(CommandHandler('start', start))
