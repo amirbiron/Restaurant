@@ -39,70 +39,93 @@ def index():
 @app.route('/health')
 def health():
     """Health check endpoint"""
+    # Always return 200 for Render, include status details in payload
+    status_payload = {'service': 'telegram-bot', 'port': PORT}
     if bot_status['running']:
-        return jsonify({'status': 'healthy'}), 200
+        status_payload['status'] = 'healthy'
+        return jsonify(status_payload), 200
     elif bot_status['error']:
-        return jsonify({'status': 'error', 'error': str(bot_status['error'])}), 503
+        status_payload['status'] = 'error'
+        status_payload['error'] = str(bot_status['error'])
+        return jsonify(status_payload), 200
     else:
-        return jsonify({'status': 'starting'}), 503
+        status_payload['status'] = 'starting'
+        return jsonify(status_payload), 200
 
 def run_bot_async():
-    """Run bot in separate thread with event loop"""
+    """Run bot in separate thread with event loop and retry on conflict"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
-    async def start_bot():
-        global bot_status
-        try:
-            logger.info("Importing bot modules...")
-            from bot import BOT_TOKEN
-            
-            if not BOT_TOKEN:
-                raise ValueError("BOT_TOKEN not set")
-            
-            from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
-            from bot import (
-                start, button_handler, handle_text, handle_contact_process,
-                admin_command, export_leads
-            )
-            
-            logger.info("Creating bot application...")
-            app = Application.builder().token(BOT_TOKEN).build()
 
-            # Ensure webhook is removed before starting polling
-            await app.bot.delete_webhook(drop_pending_updates=True)
-            
-            # Add handlers
-            app.add_handler(CommandHandler('start', start))
-            app.add_handler(CommandHandler('admin', admin_command))
-            app.add_handler(CommandHandler('export_leads', export_leads))
-            app.add_handler(CallbackQueryHandler(button_handler))
-            app.add_handler(MessageHandler(
-                filters.TEXT & ~filters.COMMAND,
-                lambda u, c: handle_contact_process(u, c) if any(
-                    key in c.user_data for key in ['contact_step', 'appointment_step', 'human_support']
-                ) else handle_text(u, c)
-            ))
-            
-            # Start bot
-            logger.info("Initializing bot...")
-            await app.initialize()
-            await app.start()
-            await app.updater.start_polling(drop_pending_updates=True)
-            
-            bot_status['running'] = True
-            logger.info("✅ Bot started successfully!")
-            
-            # Keep running
-            await asyncio.Event().wait()
-            
-        except Exception as e:
-            logger.error(f"Bot error: {e}")
-            bot_status['error'] = str(e)
-            bot_status['running'] = False
-    
+    async def start_bot_with_retry():
+        global bot_status
+        retry_delay_seconds = 10
+        while True:
+            bot_status['error'] = None
+            from bot import BOT_TOKEN
+            if not BOT_TOKEN:
+                bot_status['error'] = 'BOT_TOKEN not set'
+                logger.error("BOT_TOKEN not set")
+                await asyncio.sleep(retry_delay_seconds)
+                continue
+
+            telegram_app = None
+            try:
+                logger.info("Creating bot application...")
+                from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+                from bot import (
+                    start, button_handler, handle_text, handle_contact_process,
+                    admin_command, export_leads
+                )
+
+                telegram_app = Application.builder().token(BOT_TOKEN).build()
+
+                # Ensure webhook is removed before starting polling
+                await telegram_app.bot.delete_webhook(drop_pending_updates=True)
+
+                # Add handlers
+                telegram_app.add_handler(CommandHandler('start', start))
+                telegram_app.add_handler(CommandHandler('admin', admin_command))
+                telegram_app.add_handler(CommandHandler('export_leads', export_leads))
+                telegram_app.add_handler(CallbackQueryHandler(button_handler))
+                telegram_app.add_handler(MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    lambda u, c: handle_contact_process(u, c) if any(
+                        key in c.user_data for key in ['contact_step', 'appointment_step', 'human_support']
+                    ) else handle_text(u, c)
+                ))
+
+                # Start bot
+                logger.info("Initializing bot...")
+                await telegram_app.initialize()
+                await telegram_app.start()
+                logger.info("Starting polling...")
+                await telegram_app.updater.start_polling(drop_pending_updates=True)
+
+                bot_status['running'] = True
+                logger.info("✅ Bot started successfully!")
+
+                # Keep running until canceled
+                await asyncio.Event().wait()
+
+            except Exception as e:
+                bot_status['running'] = False
+                bot_status['error'] = str(e)
+                logger.error(f"Bot error: {e}")
+                # Conflict happens if another getUpdates is running elsewhere. Retry.
+                await asyncio.sleep(retry_delay_seconds)
+
+            finally:
+                if telegram_app:
+                    try:
+                        await telegram_app.updater.stop()
+                        await telegram_app.stop()
+                        await telegram_app.shutdown()
+                    except Exception:
+                        pass
+
     try:
-        loop.run_until_complete(start_bot())
+        loop.run_until_complete(start_bot_with_retry())
     except KeyboardInterrupt:
         pass
     finally:
