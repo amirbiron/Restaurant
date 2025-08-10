@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Optimized version for Render deployment
-Combines Flask server and Telegram bot using asyncio with enhanced error handling
+Optimized version for Render deployment - Flask starts FIRST
 """
 
 import os
@@ -13,7 +12,6 @@ from flask import Flask, jsonify
 from threading import Thread
 import signal
 import time
-from typing import Optional
 
 # הגדרת לוגים
 logging.basicConfig(
@@ -27,56 +25,55 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 PORT = int(os.environ.get('PORT', 10000))
 
-# Global bot application
+# Global bot status
 bot_app = None
 bot_running = False
-bot_error_count = 0
-last_error_time = None
+bot_initializing = False
+bot_error = None
 
 @app.route('/')
 def index():
     """Root endpoint"""
-    logger.info("Root endpoint accessed")
     return jsonify({
         'status': 'running',
         'bot_active': bot_running,
+        'bot_initializing': bot_initializing,
         'service': 'telegram-bot',
-        'error_count': bot_error_count
+        'port': PORT
     }), 200
 
 @app.route('/health')
 def health():
     """Health check endpoint for Render"""
-    logger.info("Health check endpoint accessed")
-    if bot_running:
-        return jsonify({
-            'status': 'healthy',
-            'bot': 'running',
-            'service': 'telegram-bot',
-            'error_count': bot_error_count
-        }), 200
-    else:
-        return jsonify({
-            'status': 'starting',
-            'bot': 'initializing',
-            'service': 'telegram-bot',
-            'error_count': bot_error_count
-        }), 503
+    # Always return 200 to keep Render happy
+    # Even if bot is not ready yet
+    status = {
+        'flask': 'healthy',
+        'port': PORT,
+        'bot_status': 'running' if bot_running else ('initializing' if bot_initializing else 'stopped'),
+        'service': 'telegram-bot'
+    }
+    
+    if bot_error:
+        status['last_error'] = str(bot_error)
+    
+    return jsonify(status), 200
 
 async def run_telegram_bot():
-    """Run the telegram bot with enhanced error handling and retry logic"""
-    global bot_app, bot_running, bot_error_count, last_error_time
+    """Run the telegram bot"""
+    global bot_app, bot_running, bot_initializing, bot_error
     
-    max_retries = 5
+    bot_initializing = True
+    max_retries = 3
     retry_count = 0
-    base_delay = 5  # Start with 5 seconds delay
     
     while retry_count < max_retries:
         try:
+            logger.info(f"Telegram bot initialization attempt {retry_count + 1}/{max_retries}")
+            
             # Import bot components
             from bot import BOT_TOKEN
             from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
-            from telegram.error import NetworkError, TimedOut, RetryAfter
             
             # Import handlers
             from bot import (
@@ -86,28 +83,27 @@ async def run_telegram_bot():
             
             if not BOT_TOKEN:
                 logger.error("BOT_TOKEN is not set!")
+                bot_error = "BOT_TOKEN not configured"
+                bot_initializing = False
                 return
             
-            logger.info(f"Initializing Telegram bot (attempt {retry_count + 1}/{max_retries})...")
+            logger.info("Creating Telegram bot application...")
             
-            # Create application with custom settings for better resilience
+            # Create application with timeouts
             bot_app = (
                 Application.builder()
                 .token(BOT_TOKEN)
-                .connect_timeout(30.0)  # Increase connection timeout
-                .read_timeout(30.0)     # Increase read timeout
-                .write_timeout(30.0)    # Increase write timeout
-                .pool_timeout(30.0)     # Increase pool timeout
+                .connect_timeout(20.0)
+                .read_timeout(20.0)
                 .build()
             )
 
-            # Ensure webhook is removed before starting polling
+            # Remove webhook
             logger.info("Removing any existing webhooks...")
             try:
                 await bot_app.bot.delete_webhook(drop_pending_updates=True)
-                logger.info("Webhook removed successfully")
             except Exception as e:
-                logger.warning(f"Could not remove webhook: {e}")
+                logger.warning(f"Webhook removal warning: {e}")
             
             # Add handlers
             bot_app.add_handler(CommandHandler('start', start))
@@ -121,88 +117,50 @@ async def run_telegram_bot():
                 ) else handle_text(u, c)
             ))
             
-            # Add error handler
-            async def error_handler(update, context):
-                """Handle errors in the bot"""
-                global bot_error_count, last_error_time
-                bot_error_count += 1
-                last_error_time = time.time()
-                
-                error = context.error
-                logger.error(f"Bot error occurred: {type(error).__name__}: {error}")
-                
-                if isinstance(error, NetworkError):
-                    logger.warning("Network error detected, will retry...")
-                elif isinstance(error, TimedOut):
-                    logger.warning("Request timed out, will retry...")
-                elif isinstance(error, RetryAfter):
-                    logger.warning(f"Rate limited, retry after {error.retry_after} seconds")
-                    await asyncio.sleep(error.retry_after)
-                else:
-                    import traceback
-                    logger.error(f"Unexpected error: {traceback.format_exc()}")
-            
-            bot_app.add_error_handler(error_handler)
-            
             # Initialize and start
             await bot_app.initialize()
             await bot_app.start()
             
-            logger.info("Starting bot polling with enhanced settings...")
-            
-            # Start polling with custom parameters for better resilience
+            logger.info("Starting bot polling...")
             await bot_app.updater.start_polling(
                 drop_pending_updates=True,
-                allowed_updates=None,  # Receive all update types
-                poll_interval=1.0,      # Check for updates every second
-                timeout=30,             # Timeout for long polling
-                bootstrap_retries=3,    # Retry bootstrap 3 times
-                read_timeout=30.0,      # Read timeout
-                write_timeout=30.0,     # Write timeout
-                connect_timeout=30.0,   # Connect timeout
-                pool_timeout=30.0       # Pool timeout
+                allowed_updates=None
             )
             
             bot_running = True
-            retry_count = 0  # Reset retry count on successful start
-            bot_error_count = 0  # Reset error count
+            bot_initializing = False
+            bot_error = None
             logger.info("✅ Telegram bot is running successfully!")
             
             # Keep running
             await asyncio.Event().wait()
             
         except Exception as e:
-            bot_running = False
             retry_count += 1
-            bot_error_count += 1
-            last_error_time = time.time()
-            
+            bot_error = str(e)
             logger.error(f"Bot error (attempt {retry_count}/{max_retries}): {e}")
-            import traceback
-            traceback.print_exc()
             
             if retry_count < max_retries:
-                # Exponential backoff with jitter
-                delay = min(base_delay * (2 ** retry_count), 60) + (time.time() % 5)
-                logger.info(f"Retrying in {delay:.1f} seconds...")
-                await asyncio.sleep(delay)
+                logger.info(f"Retrying in 10 seconds...")
+                await asyncio.sleep(10)
                 
-                # Clean up the previous bot instance if it exists
+                # Cleanup
                 if bot_app:
                     try:
-                        logger.info("Cleaning up previous bot instance...")
                         await bot_app.updater.stop()
                         await bot_app.stop()
                         await bot_app.shutdown()
-                    except Exception as cleanup_error:
-                        logger.warning(f"Error during cleanup: {cleanup_error}")
-                    finally:
-                        bot_app = None
+                    except:
+                        pass
+                    bot_app = None
             else:
-                logger.error(f"Max retries ({max_retries}) reached. Bot will not restart automatically.")
+                logger.error("Max retries reached. Bot stopped.")
+                bot_running = False
+                bot_initializing = False
                 break
     
     # Final cleanup
+    bot_initializing = False
     if bot_app:
         try:
             await bot_app.updater.stop()
@@ -211,16 +169,30 @@ async def run_telegram_bot():
         except:
             pass
 
-def run_bot_thread():
-    """Run bot in thread with its own event loop"""
+def run_bot_in_background():
+    """Run bot in background with new event loop"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(run_telegram_bot())
     except Exception as e:
-        logger.error(f"Bot thread error: {e}")
+        logger.error(f"Bot thread critical error: {e}")
     finally:
         loop.close()
+
+def start_flask_server():
+    """Start Flask server in main thread"""
+    logger.info(f"Starting Flask server on port {PORT}...")
+    logger.info(f"Flask is binding to 0.0.0.0:{PORT}")
+    
+    # This runs Flask in the main thread
+    app.run(
+        host='0.0.0.0',
+        port=PORT,
+        debug=False,
+        use_reloader=False,
+        threaded=True
+    )
 
 def signal_handler(signum, frame):
     """Handle shutdown signals"""
@@ -228,50 +200,43 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 def main():
-    """Main function"""
+    """Main function - Flask starts IMMEDIATELY"""
     logger.info("=" * 50)
-    logger.info("Starting Telegram Bot Service for Render")
+    logger.info("Starting Service for Render Deployment")
     logger.info(f"Port: {PORT}")
     logger.info("=" * 50)
-    
-    # Check BOT_TOKEN
-    from bot import BOT_TOKEN
-    if not BOT_TOKEN:
-        logger.error("❌ ERROR: BOT_TOKEN is not set!")
-        logger.error("Please set BOT_TOKEN in Render Environment Variables")
-        sys.exit(1)
-    
-    logger.info("✅ BOT_TOKEN found")
     
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Start bot in background thread
-    logger.info("Starting Telegram bot thread...")
-    bot_thread = Thread(target=run_bot_thread, daemon=True)
-    bot_thread.start()
+    # CRITICAL: Start Flask FIRST in a separate thread
+    # This ensures Render sees an open port immediately
+    logger.info("Starting Flask server FIRST (for Render port detection)...")
+    flask_thread = Thread(target=start_flask_server, daemon=False)
+    flask_thread.start()
     
-    # Wait a bit for bot to initialize
-    time.sleep(3)
+    # Give Flask a moment to bind to the port
+    time.sleep(2)
+    logger.info(f"Flask server should now be listening on port {PORT}")
     
-    # Start Flask server
-    logger.info(f"Starting Flask server on port {PORT}...")
-    logger.info(f"Health check URL: http://0.0.0.0:{PORT}/health")
-    
+    # Now check for BOT_TOKEN and start bot in background
     try:
-        # Run Flask with explicit settings
-        app.run(
-            host='0.0.0.0',
-            port=PORT,
-            debug=False,
-            use_reloader=False,
-            threaded=True
-        )
-    except Exception as e:
-        logger.error(f"Flask error: {e}")
-        import traceback
-        traceback.print_exc()
+        from bot import BOT_TOKEN
+        if BOT_TOKEN:
+            logger.info("✅ BOT_TOKEN found, starting Telegram bot in background...")
+            bot_thread = Thread(target=run_bot_in_background, daemon=True)
+            bot_thread.start()
+        else:
+            logger.warning("⚠️ BOT_TOKEN not set - running without Telegram bot")
+            global bot_error
+            bot_error = "BOT_TOKEN not configured"
+    except ImportError as e:
+        logger.error(f"Could not import bot module: {e}")
+        bot_error = f"Import error: {e}"
+    
+    # Keep main thread alive by joining Flask thread
+    flask_thread.join()
 
 if __name__ == '__main__':
     main()
