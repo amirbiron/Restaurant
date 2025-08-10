@@ -537,7 +537,12 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     """Initialize and run the bot"""
     # בניית האפליקציה עם הגדרות מתאימות ל-Python 3.13
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .get_updates_request_timeout(10.0)
+        .build()
+    )
 
     # Ensure webhook is removed before starting polling
     await app.bot.delete_webhook(drop_pending_updates=True)
@@ -552,7 +557,7 @@ async def main():
     # הפעלה עם polling
     await app.initialize()
     await app.start()
-    await app.updater.start_polling()
+    await app.updater.start_polling(drop_pending_updates=True)
     
     # המתנה עד לסיום
     try:
