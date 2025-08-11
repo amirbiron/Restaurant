@@ -165,28 +165,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # קטלוג
 async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    catalog_text = """הנה טעימה מהשירותים/מוצרים הפופולריים שלנו:
-
-📦 **חבילת בסיס** - "מתאים להתחלה מהירה"
-• פתרון בסיסי ויעיל לכל עסק
-• כולל הכל הדרוש להתחלה
-• תמיכה מלאה ושירות לקוחות
-💰 **149 ₪**
-
-📦 **חבילת פלוס** - "כולל תוספות חשובות"
-• כל מה שיש בחבילת הבסיס
-• תוספות מתקדמות ומותאמות אישית
-• דוחות וניתוח מתקדם
-💰 **349 ₪**
-
-📦 **חבילת פרו** - "למי שרוצה מקסימום"
-• הפתרון הכי מתקדם שיש לנו
-• תמיכה 24/7 ושירות VIP
-• התאמות מלאות לפי דרישה
-💰 **749 ₪**"""
-
     await update.message.reply_text(
-        catalog_text,
+        get_catalog_text(),
         parse_mode='Markdown',
         reply_markup=catalog_keyboard()
     )
@@ -268,6 +248,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f'מעולה! אתם מתעניינים ב{get_package_name(package)} 👍\nבואו נתחיל - מה השם הפרטי?'
         )
     
+    # התחלת קביעת שיחה מתוך פרטי חבילה
+    elif data.startswith('schedule_'):
+        today = datetime.now()
+        dates = []
+        for i in range(1, 6):  # 5 הימים הקרובים
+            date = today + timedelta(days=i)
+            dates.append(InlineKeyboardButton(
+                date.strftime('%d/%m (%a)'),
+                callback_data=f'date_{date.strftime("%Y-%m-%d")}'
+            ))
+        keyboard = [dates[i:i+2] for i in range(0, len(dates), 2)]
+        keyboard.append([InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')])
+        await query.edit_message_text(
+            'בואו נקבע – זה לוקח חצי דקה 🙂\nבחרו יום פנוי:',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    
+    # בקשת הצעת מחיר: פתיחת טופס יצירת קשר וקיבוע עניין לפי חבילה
+    elif data.startswith('quote_'):
+        package = data.split('_')[1]
+        context.user_data['interest'] = get_package_name(package)
+        context.user_data['contact_step'] = 'name'
+        await query.edit_message_text('נשמח לחזור אליך 👇\nאיך לפנות אליך – מה השם הפרטי?')
+    
+    # חזרה לקטלוג מתוך פרטי חבילה
+    elif data == 'back_catalog':
+        await query.edit_message_text(
+            get_catalog_text(),
+            parse_mode='Markdown',
+            reply_markup=catalog_keyboard()
+        )
+    
     elif data.startswith('date_'):
         selected_date = data.split('_')[1]
         context.user_data['selected_date'] = selected_date
@@ -282,6 +294,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(
             f'נבחר תאריך: {selected_date}\nשעה מועדפת?',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    
+    # חזרה למסך בחירת תאריכים
+    elif data == 'back_dates':
+        today = datetime.now()
+        dates = []
+        for i in range(1, 6):
+            date = today + timedelta(days=i)
+            dates.append(InlineKeyboardButton(
+                date.strftime('%d/%m (%a)'),
+                callback_data=f'date_{date.strftime("%Y-%m-%d")}'
+            ))
+        keyboard = [dates[i:i+2] for i in range(0, len(dates), 2)]
+        keyboard.append([InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')])
+        await query.edit_message_text(
+            'בואו נקבע – זה לוקח חצי דקה 🙂\nבחרו יום פנוי:',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     
@@ -302,6 +331,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             answer,
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    
+    # חזרה לרשימת שאלות נפוצות
+    elif data == 'back_faq':
+        await query.edit_message_text(
+            'שאלות נפוצות – לחצו לקבלת מענה מיידי:',
+            reply_markup=faq_keyboard()
         )
     
     elif data == 'human_support':
@@ -401,6 +437,27 @@ def get_faq_answer(faq_type):
 • שמירה במערכת לשנים"""
     }
     return answers.get(faq_type, 'מידע לא זמין')
+
+def get_catalog_text() -> str:
+    return """הנה טעימה מהשירותים/מוצרים הפופולריים שלנו:
+
+📦 **חבילת בסיס** - "מתאים להתחלה מהירה"
+• פתרון בסיסי ויעיל לכל עסק
+• כולל הכל הדרוש להתחלה
+• תמיכה מלאה ושירות לקוחות
+💰 **149 ₪**
+
+📦 **חבילת פלוס** - "כולל תוספות חשובות"
+• כל מה שיש בחבילת הבסיס
+• תוספות מתקדמות ומותאמות אישית
+• דוחות וניתוח מתקדם
+💰 **349 ₪**
+
+📦 **חבילת פרו** - "למי שרוצה מקסימום"
+• הפתרון הכי מתקדם שיש לנו
+• תמיכה 24/7 ושירות VIP
+• התאמות מלאות לפי דרישה
+💰 **749 ₪**"""
 
 # טיפול בהודעות בתהליך איסוף מידע
 async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
