@@ -108,7 +108,7 @@ def run_bot_async():
                 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
                 from bot import (
                     start, button_handler, handle_text, handle_contact_process,
-                    admin_command, export_leads
+                    admin_command, export_leads, export_appointments
                 )
 
                 # Build application with proper configuration
