@@ -10,6 +10,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timedelta
+from urllib.parse import quote_plus
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from activity_reporter import create_reporter
@@ -100,7 +101,8 @@ dm = DataManager()
 def main_menu_keyboard():
     keyboard = [
         [KeyboardButton('🛍️ קטלוג קצר'), KeyboardButton('📆 קביעת תור/הזמנה')],
-        [KeyboardButton('❓ שאלות ותמיכה'), KeyboardButton('📞 צור קשר')]
+        [KeyboardButton('❓ שאלות ותמיכה'), KeyboardButton('📞 צור קשר')],
+        [KeyboardButton('📍 איפה אנחנו'), KeyboardButton('💬 מה אומרים עלינו')]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -156,6 +158,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_faq(update, context)
     elif text == '📞 צור קשר':
         await show_contact_form(update, context)
+    elif text == '📍 איפה אנחנו':
+        await show_location_info(update, context)
+    elif text == '💬 מה אומרים עלינו':
+        await show_reviews(update, context)
     else:
         await update.message.reply_text(
             'אנא בחר/י אחת מהאפשרויות בתפריט 👇',
@@ -206,6 +212,47 @@ async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['contact_step'] = 'name'
     await update.message.reply_text(
         'נשמח לחזור אליך 👇\nאנא שתף/י את השם הפרטי:'
+    )
+
+# חדש: מיקום ופרטי עסק
+async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
+    latitude = 32.0853
+    longitude = 34.7818
+    address = 'רחוב הרצל 15, תל אביב'
+    working_hours = dm.data['settings'].get('working_hours', 'א׳-ה׳ 09:00-18:00')
+
+    # שליחת מיקום
+    await update.message.reply_location(latitude=latitude, longitude=longitude)
+
+    # קישורים לווייז וגוגל מפות
+    encoded_address = quote_plus(address)
+    waze_url = f'https://waze.com/ul?q={encoded_address}&navigate=yes'
+    gmaps_url = f'https://www.google.com/maps/search/?api=1&query={encoded_address}'
+
+    keyboard = [
+        [InlineKeyboardButton('🗺️ פתח בוויז', url=waze_url), InlineKeyboardButton('📍 פתח בגוגל מפות', url=gmaps_url)],
+        [InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')]
+    ]
+
+    text = f"📍 {address}\n⏰ שעות פעילות: {working_hours}"
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# חדש: המלצות לקוחות
+async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
+    reviews = [
+        '⭐⭐⭐⭐⭐\n"שירות מעולה! קיבלתי בדיוק מה שרציתי."\n- שרה כהן',
+        '⭐⭐⭐⭐⭐\n"מקצועיים, מהירים ואמינים. ממליצה בחום!"\n- דוד לוי',
+        '⭐⭐⭐⭐⭐\n"עבודה נקייה והתאמה מושלמת לדרישות שלי."\n- רחל אברהם'
+    ]
+
+    for review in reviews:
+        await update.message.reply_text(review)
+
+    await update.message.reply_text(
+        'רוצה לראות עוד? או לחזור לתפריט:',
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')]])
     )
 
 # טיפול בלחיצות על כפתורים
