@@ -11,7 +11,7 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from activity_reporter import create_reporter
 
@@ -241,14 +241,28 @@ async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # חדש: המלצות לקוחות
 async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    reviews = [
-        '⭐⭐⭐⭐⭐\n"שירות מעולה! קיבלתי בדיוק מה שרציתי."\n- שרה כהן',
-        '⭐⭐⭐⭐⭐\n"מקצועיים, מהירים ואמינים. ממליצה בחום!"\n- דוד לוי',
-        '⭐⭐⭐⭐⭐\n"עבודה נקייה והתאמה מושלמת לדרישות שלי."\n- רחל אברהם'
+    # אלבום ביקורות כתמונות עם כיתובים
+    media = [
+        InputMediaPhoto(
+            media='https://via.placeholder.com/800x600.png?text=%E2%AD%90%E2%AD%90%E2%AD%90%E2%AD%90%E2%AD%90',
+            caption='⭐⭐⭐⭐⭐\n"שירות מעולה! קיבלתי בדיוק מה שרציתי."\n- שרה כהן'
+        ),
+        InputMediaPhoto(
+            media='https://via.placeholder.com/800x600.png?text=%D7%94%D7%9E%D7%9C%D7%A6%D7%94+%232',
+            caption='⭐⭐⭐⭐⭐\n"מקצועיים, מהירים ואמינים. ממליצה בחום!"\n- דוד לוי'
+        ),
+        InputMediaPhoto(
+            media='https://via.placeholder.com/800x600.png?text=%D7%94%D7%9E%D7%9C%D7%A6%D7%94+%233',
+            caption='⭐⭐⭐⭐⭐\n"עבודה נקייה והתאמה מושלמת לדרישות שלי."\n- רחל אברהם'
+        )
     ]
 
-    for review in reviews:
-        await update.message.reply_text(review)
+    try:
+        await update.message.reply_media_group(media=media)
+    except Exception:
+        # נפילה חיננית: אם אלבום נכשל, שלח טקסטים נפרדים
+        for m in media:
+            await update.message.reply_text(m.caption)
 
     await update.message.reply_text(
         'רוצה לראות עוד? או לחזור לתפריט:',
