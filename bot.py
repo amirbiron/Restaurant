@@ -13,8 +13,9 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.constants import ChatAction
 from activity_reporter import create_reporter
 
 # הגדרת לוגים
@@ -90,6 +91,18 @@ class DataManager:
         ]
     
     def add_lead(self, user_id, name, phone, business_name='', interest='', source='דמו טלגרם'):
+        # Deduplicate by user_id+phone: update if exists
+        for existing in self.data['leads']:
+            if existing.get('user_id') == user_id and existing.get('phone') == phone:
+                existing.update({
+                    'name': name,
+                    'business_name': business_name,
+                    'interest': interest,
+                    'source': source,
+                    'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                })
+                self.save_data()
+                return existing
         lead = {
             'id': len(self.data['leads']) + 1,
             'user_id': user_id,
@@ -142,10 +155,10 @@ dm = DataManager()
 # פונקציות עזר לתפריטים
 def main_menu_keyboard():
     keyboard = [
-        [KeyboardButton('🍽️ תפריט'), KeyboardButton('📆 הזמנת שולחן')],
-        [KeyboardButton('🚚 משלוחים'), KeyboardButton('❓ אלרגנים ושאלות')],
-        [KeyboardButton('📍 איפה אנחנו'), KeyboardButton('💬 ביקורות')],
-        [KeyboardButton('🧺 העגלה שלי')]
+        [KeyboardButton('🛍️ קטלוג קצר'), KeyboardButton('📆 קביעת תור/הזמנה')],
+        [KeyboardButton('❓ שאלות ותמיכה'), KeyboardButton('📞 צור קשר')],
+        [KeyboardButton('📍 איפה אנחנו'), KeyboardButton('💬 מה אומרים עלינו')],
+        [KeyboardButton('📋 ההזמנות שלי')]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -194,20 +207,20 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
     text = update.message.text
     
-    if text == '🍽️ תפריט':
-        await show_menu(update, context)
-    elif text == '📆 הזמנת שולחן':
+    if text == '🛍️ קטלוג קצר':
+        await show_catalog(update, context)
+    elif text == '📆 קביעת תור/הזמנה':
         await show_appointment_booking(update, context)
-    elif text == '🚚 משלוחים':
-        await show_delivery_info(update, context)
-    elif text == '❓ אלרגנים ושאלות':
+    elif text == '❓ שאלות ותמיכה':
         await show_faq(update, context)
+    elif text == '📞 צור קשר':
+        await show_contact_form(update, context)
     elif text == '📍 איפה אנחנו':
         await show_location_info(update, context)
-    elif text == '💬 ביקורות':
+    elif text == '💬 מה אומרים עלינו':
         await show_reviews(update, context)
-    elif text == '🧺 העגלה שלי':
-        await show_cart(update, context)
+    elif text == '📋 ההזמנות שלי':
+        await show_user_history(update, context)
     else:
         await update.message.reply_text(
             'אנא בחר/י אחת מהאפשרויות בתפריט 👇',
@@ -257,6 +270,7 @@ async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         'נשמח לחזור אליך 👇\nאנא שתף/י את השם הפרטי:'
     )
+    # הצעת שיתוף טלפון בכפתור ייעודי בשלב הטלפון
 
 # חדש: מיקום ופרטי עסק
 async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -506,6 +520,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['human_support'] = True
     
+    # אדמין: אישור/דחיית תור
+    elif data.startswith('approve_appt_') or data.startswith('reject_appt_'):
+        if update.effective_user.id != dm.data['settings']['admin_id']:
+            await query.answer('אין הרשאה', show_alert=True)
+            return
+        try:
+            appt_id = int(data.split('_')[-1])
+            for a in dm.data['appointments']:
+                if a.get('id') == appt_id:
+                    if data.startswith('approve_appt_'):
+                        a['status'] = 'אושר'
+                    else:
+                        a['status'] = 'נדחה'
+                    dm.save_data()
+                    # עדכון הלקוח אם אפשר
+                    user_id = a.get('user_id')
+                    if user_id:
+                        try:
+                            status_text = 'אושר' if a['status'] == 'אושר' else 'נדחה'
+                            await context.bot.send_message(user_id, f"עדכון תור #{appt_id}: {status_text}\n📅 {a.get('date','')} ⏰ {a.get('time','')}")
+                        except:
+                            pass
+                    await query.edit_message_text(f"עודכן סטטוס לתור #{appt_id}: {a['status']}")
+                    return
+            await query.answer('תור לא נמצא', show_alert=True)
+        except Exception as e:
+            await query.answer('שגיאה בטיפול', show_alert=True)
+    
     # === Restaurant cart actions ===
     elif data.startswith('add_'):
         item_id = data.split('_')[1]
@@ -720,11 +762,21 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
             )
         
         elif user_data['contact_step'] == 'phone':
+            # ולידציה בסיסית לטלפון ישראלי
+            phone = text.strip()
+            if not re.match(r'^(\+?972|0)?5\d(-?\d){7}$', phone):
+                share_kb = ReplyKeyboardMarkup(
+                    [[KeyboardButton('שתף מספר מהטלפון 📱', request_contact=True)]],
+                    resize_keyboard=True,
+                    one_time_keyboard=True
+                )
+                await update.message.reply_text('מספר טלפון לא תקין. אפשר להקליד שוב או לשתף בלחיצה:', reply_markup=share_kb)
+                return
             # שמירת הליד
             lead = dm.add_lead(
                 user_id=update.effective_user.id,
                 name=user_data['name'],
-                phone=text,
+                phone=phone,
                 business_name=user_data.get('business', ''),
                 interest=user_data.get('interest', ''),
                 source='דמו טלגרם'
@@ -735,13 +787,13 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
                 try:
                     await context.bot.send_message(
                         dm.data['settings']['admin_id'],
-                        f"🔔 ליד חדש!\n\n👤 {lead['name']}\n📞 {text}\n🏢 {lead['business_name']}\n🎯 {lead['interest']}\n📅 {lead['date']}"
+                        f"🔔 ליד חדש!\n\n👤 {lead['name']}\n📞 {phone}\n🏢 {lead['business_name']}\n🎯 {lead['interest']}\n📅 {lead['date']}"
                     )
                 except:
                     pass
             
             await update.message.reply_text(
-                'תודה! קיבלנו את הפרטים ✅\nמנהל יחזור אליך בהקדם.',
+                f"תודה! קיבלנו את הפרטים ✅\nמספר בקשה: {lead['id']}",
                 reply_markup=main_menu_keyboard()
             )
             
@@ -756,27 +808,35 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
             await update.message.reply_text('ומספר טלפון:')
         
         elif user_data['appointment_step'] == 'phone':
+            phone = text.strip()
+            if not re.match(r'^(\+?972|0)?5\d(-?\d){7}$', phone):
+                await update.message.reply_text('מספר טלפון לא תקין. נסו שוב:')
+                return
             # שמירת התור
             appointment = dm.add_appointment(
                 user_id=update.effective_user.id,
                 name=user_data['appointment_name'],
-                phone=text,
+                phone=phone,
                 date=user_data['selected_date'],
                 time=user_data['selected_time']
             )
             
-            # הודעה למנהל
+            # הודעה למנהל עם כפתורי אישור/דחייה
             if dm.data['settings']['admin_id']:
                 try:
+                    approve_cb = f"approve_appt_{appointment['id']}"
+                    reject_cb = f"reject_appt_{appointment['id']}"
+                    kb = InlineKeyboardMarkup([[InlineKeyboardButton('אשר ✅', callback_data=approve_cb), InlineKeyboardButton('דחה ❌', callback_data=reject_cb)]])
                     await context.bot.send_message(
                         dm.data['settings']['admin_id'],
-                        f"📅 בקשת תור חדשה!\n\n👤 {appointment['name']}\n📞 {text}\n📅 {appointment['date']}\n⏰ {appointment['time']}\n🔢 מזהה: {appointment['id']}"
+                        f"📅 בקשת תור חדשה!\n\n👤 {appointment['name']}\n📞 {phone}\n📅 {appointment['date']}\n⏰ {appointment['time']}\n🔢 מזהה: {appointment['id']}",
+                        reply_markup=kb
                     )
                 except:
                     pass
             
             await update.message.reply_text(
-                f'תודה! ההזמנה לשולחן נקלטה ✅\n📅 {user_data["selected_date"]} בשעה {user_data["selected_time"]}\n\nתקבלו אישור כאן בצ\'אט.',
+                f'הבקשה נקלטה ✅\n📅 {user_data["selected_date"]} בשעה {user_data["selected_time"]}\nנעדכן כאן כשמאושר.',
                 reply_markup=main_menu_keyboard()
             )
             
