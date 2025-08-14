@@ -27,7 +27,7 @@
   "settings": {
     "admin_id": null,
     "business_phone": "03-1234567",
-    "working_hours": "א׳-ה׳ 09:00-18:00",
+    "working_hours": "א׳-ה׳ 09:00-18:00; ו׳ 09:00-13:00; ש׳ סגור",
     "welcome_message": "שלום! 👋\nברוכים הבאים לעוזר העסק בטלגרם. כאן אפשר לראות קטלוג קצר, לקבוע תור/הזמנה, לקבל תשובות מהירות וליצור קשר ישיר.\nאיך אוכל לעזור?"
   }
 }
