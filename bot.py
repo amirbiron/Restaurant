@@ -705,24 +705,76 @@ async def show_user_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # סטטוס זמינות: פתוח/סגור כעת
 
+def _parse_working_hours_to_map(hours_str: str):
+    day_map = {'א': 6, 'ב': 0, 'ג': 1, 'ד': 2, 'ה': 3, 'ו': 4, 'ש': 5}
+    day_order = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש']
+
+    def clean_day_token(tok: str) -> str:
+        return tok.replace('׳', '').replace('״', '').strip()
+
+    def time_to_minutes(t: str) -> int:
+        h, m = t.split(':')
+        return int(h) * 60 + int(m)
+
+    schedule = {i: [] for i in range(7)}
+
+    segments = re.split(r'[;\n]+', hours_str)
+    for seg in segments:
+        seg = seg.strip()
+        if not seg:
+            continue
+
+        m_range = re.match(r'^([אבגדהוש][׳״]?)\s*-\s*([אבגדהוש][׳״]?)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$', seg)
+        m_single = re.match(r'^([אבגדהוש][׳״]?)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$', seg)
+        m_closed = re.match(r'^([אבגדהוש][׳״]?)\s+סגור$', seg)
+
+        if m_range:
+            d1 = clean_day_token(m_range.group(1))
+            d2 = clean_day_token(m_range.group(2))
+            t1 = m_range.group(3)
+            t2 = m_range.group(4)
+            if d1 in day_map and d2 in day_map:
+                start_idx = day_order.index(d1)
+                end_idx = day_order.index(d2)
+                if start_idx <= end_idx:
+                    days = day_order[start_idx:end_idx + 1]
+                else:
+                    days = day_order[start_idx:] + day_order[:end_idx + 1]
+                for d in days:
+                    schedule[day_map[d]].append((time_to_minutes(t1), time_to_minutes(t2)))
+        elif m_single:
+            d = clean_day_token(m_single.group(1))
+            t1 = m_single.group(2)
+            t2 = m_single.group(3)
+            if d in day_map:
+                schedule[day_map[d]].append((time_to_minutes(t1), time_to_minutes(t2)))
+        elif m_closed:
+            d = clean_day_token(m_closed.group(1))
+            if d in day_map:
+                schedule[day_map[d]] = []
+        else:
+            continue
+
+    return schedule
+
+
 def is_business_open() -> bool:
     try:
         hours_str = dm.data['settings'].get('working_hours', 'א׳-ה׳ 09:00-18:00')
-        match = re.search(r'(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', hours_str)
-        if match:
-            start_hour = int(match.group(1))
-            end_hour = int(match.group(3))
-        else:
-            start_hour, end_hour = 9, 18
+        schedule = _parse_working_hours_to_map(hours_str)
+        now = datetime.now(ZoneInfo('Asia/Jerusalem'))
+        now_minutes = now.hour * 60 + now.minute
+        intervals = schedule.get(now.weekday())
+        if intervals is None:
+            return False
+        for start_min, end_min in intervals:
+            if start_min <= now_minutes < end_min:
+                return True
+        return False
     except Exception:
-        start_hour, end_hour = 9, 18
-
-    now = datetime.now(ZoneInfo('Asia/Jerusalem'))
-    # ימים א׳-ה׳: בפייתון Monday=0 ... Sunday=6, לכן {6,0,1,2,3}
-    is_weekday_open = now.weekday() in {6, 0, 1, 2, 3}
-    # לוגיקה פשוטה: שעה 9-18 (כולל 18)
-    is_hour_open = start_hour <= now.hour <= end_hour
-    return is_weekday_open and is_hour_open
+        now = datetime.now(ZoneInfo('Asia/Jerusalem'))
+        is_weekday_open = now.weekday() in {6, 0, 1, 2, 3}
+        return 9 * 60 <= (now.hour * 60 + now.minute) < 18 * 60
 
 # היסטוריית משתמש: לידים ותורים
 
