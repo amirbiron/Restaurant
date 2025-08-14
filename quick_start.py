@@ -72,6 +72,7 @@ def run_bot():
             application.add_handler(CommandHandler('start', start))
             application.add_handler(CommandHandler('admin', admin_command))
             application.add_handler(CommandHandler('export_leads', export_leads))
+            application.add_handler(CommandHandler('export_appointments', export_appointments))
             application.add_handler(CallbackQueryHandler(button_handler))
             application.add_handler(MessageHandler(
                 filters.TEXT & ~filters.COMMAND, 
