@@ -9,8 +9,10 @@ import sys
 import json
 import logging
 import asyncio
+import re
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from activity_reporter import create_reporter
@@ -102,7 +104,8 @@ def main_menu_keyboard():
     keyboard = [
         [KeyboardButton('🛍️ קטלוג קצר'), KeyboardButton('📆 קביעת תור/הזמנה')],
         [KeyboardButton('❓ שאלות ותמיכה'), KeyboardButton('📞 צור קשר')],
-        [KeyboardButton('📍 איפה אנחנו'), KeyboardButton('💬 מה אומרים עלינו')]
+        [KeyboardButton('📍 איפה אנחנו'), KeyboardButton('💬 מה אומרים עלינו')],
+        [KeyboardButton('📋 ההזמנות שלי')]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -140,8 +143,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dm.save_data()
         await update.message.reply_text('🎉 הוגדרת כמנהל הבוט!')
     
+    status_prefix = '🟢 פתוח עכשיו - נענה מיד!' if is_business_open() else '🔴 סגור כרגע - נחזור בשעות הפעילות'
     await update.message.reply_text(
-        dm.data['settings']['welcome_message'],
+        f"{status_prefix}\n\n" + dm.data['settings']['welcome_message'],
         reply_markup=main_menu_keyboard()
     )
 
@@ -162,6 +166,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_location_info(update, context)
     elif text == '💬 מה אומרים עלינו':
         await show_reviews(update, context)
+    elif text == '📋 ההזמנות שלי':
+        await show_user_history(update, context)
     else:
         await update.message.reply_text(
             'אנא בחר/י אחת מהאפשרויות בתפריט 👇',
@@ -686,6 +692,115 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filename=f'leads_{datetime.now().strftime("%Y%m%d")}.csv',
         caption=f'📊 ייצוא לידים ({len(dm.data["leads"])} רשומות)'
     )
+
+# חדש: היסטוריית משתמש (ההזמנות שלי)
+async def show_user_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
+    user_id = update.effective_user.id
+    text = get_user_history(user_id)
+    await update.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')]])
+    )
+
+# סטטוס זמינות: פתוח/סגור כעת
+
+def is_business_open() -> bool:
+    try:
+        hours_str = dm.data['settings'].get('working_hours', 'א׳-ה׳ 09:00-18:00')
+        match = re.search(r'(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', hours_str)
+        if match:
+            start_hour = int(match.group(1))
+            end_hour = int(match.group(3))
+        else:
+            start_hour, end_hour = 9, 18
+    except Exception:
+        start_hour, end_hour = 9, 18
+
+    now = datetime.now(ZoneInfo('Asia/Jerusalem'))
+    # ימים א׳-ה׳: בפייתון Monday=0 ... Sunday=6, לכן {6,0,1,2,3}
+    is_weekday_open = now.weekday() in {6, 0, 1, 2, 3}
+    # לוגיקה פשוטה: שעה 9-18 (כולל 18)
+    is_hour_open = start_hour <= now.hour <= end_hour
+    return is_weekday_open and is_hour_open
+
+# היסטוריית משתמש: לידים ותורים
+
+def get_user_history(user_id: int) -> str:
+    leads = [lead for lead in dm.data.get('leads', []) if lead.get('user_id') == user_id]
+    appointments = [a for a in dm.data.get('appointments', []) if a.get('user_id') == user_id]
+
+    if not leads and not appointments:
+        return '📋 ההזמנות שלי:\n\nעדיין לא יצרת בקשות'
+
+    def parse_dt(dt_str: str) -> datetime:
+        try:
+            return datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            try:
+                return datetime.fromisoformat(dt_str)
+            except Exception:
+                return datetime.now()
+
+    entries = []
+    # המרות לרשומות אחודות עם מפתח זמן יצירה
+    for a in appointments:
+        created = parse_dt(a.get('created', f"{a.get('date','1970-01-01')} 00:00:00"))
+        entries.append(('appointment', a, created))
+    for l in leads:
+        created = parse_dt(l.get('date', '1970-01-01 00:00:00'))
+        entries.append(('lead', l, created))
+
+    # מיון מהחדש לישן
+    entries.sort(key=lambda x: x[2], reverse=True)
+
+    # הצגה של עד 5 רשומות
+    show_entries = entries[:5]
+    truncated = len(entries) > 5
+
+    lines = ['📋 ההזמנות שלי:\n']
+
+    for kind, obj, created in show_entries:
+        created_str = created.strftime('%d/%m/%Y')
+        if kind == 'appointment':
+            status = obj.get('status', 'ממתין לאישור')
+            icon_map = {
+                'ממתין לאישור': '🟡',
+                'אושר': '🟢',
+                'הושלם': '✅'
+            }
+            icon = icon_map.get(status, '📅')
+            label = 'בקשה' if status == 'ממתין לאישור' else 'תור'
+            date_display = obj.get('date', '')
+            time_display = obj.get('time', '')
+            phone = obj.get('phone', '-')
+            lines.append(f"{icon} {label} #{obj.get('id','')} - {status}")
+            if date_display and time_display:
+                try:
+                    dt_disp = datetime.strptime(f"{date_display} {time_display}", '%Y-%m-%d %H:%M')
+                    lines.append(f"📅 {dt_disp.strftime('%d/%m/%Y')} בשעה {dt_disp.strftime('%H:%M')}")
+                except Exception:
+                    lines.append(f"📅 {date_display} בשעה {time_display}")
+            elif date_display:
+                lines.append(f"📅 {date_display}")
+            if phone:
+                lines.append(f"📞 {phone}")
+            lines.append(f"⏰ נוצר: {created_str}")
+        else:  # lead
+            phone = obj.get('phone', '-')
+            interest = obj.get('interest', '')
+            lines.append(f"🔵 ליד #{obj.get('id','')} - בטיפול")
+            if interest:
+                lines.append(f"💼 {interest}")
+            if phone:
+                lines.append(f"📞 {phone}")
+            lines.append(f"⏰ נוצר: {created_str}")
+        lines.append('')  # רווח בין רשומות
+
+    if truncated:
+        lines.append('מציג 5 רשומות אחרונות')
+
+    return '\n'.join(lines).strip()
 
 # הפעלת הבוט
 async def main():
