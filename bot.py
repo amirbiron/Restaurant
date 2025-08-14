@@ -693,6 +693,38 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f'📊 ייצוא לידים ({len(dm.data["leads"])} רשומות)'
     )
 
+# חדש: ייצוא תורים
+async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reporter.report_activity(update.effective_user.id)
+    if update.effective_user.id != dm.data['settings']['admin_id']:
+        return
+    
+    if not dm.data.get('appointments'):
+        await update.message.reply_text('אין תורים לייצוא')
+        return
+    
+    # יצירת CSV לתורים
+    csv_content = "תאריך,שעה,שם,טלפון,שירות,סטטוס,נוצר\n"
+    for appt in dm.data['appointments']:
+        date_str = appt.get('date', '')
+        time_str = appt.get('time', '')
+        name = appt.get('name', '')
+        phone = appt.get('phone', '')
+        service = appt.get('service', '')
+        status = appt.get('status', '')
+        created = appt.get('created', '')
+        csv_content += f"{date_str},{time_str},{name},{phone},{service},{status},{created}\n"
+    
+    # שמירה ושליחה
+    with open('appointments_export.csv', 'w', encoding='utf-8') as f:
+        f.write(csv_content)
+    
+    await update.message.reply_document(
+        document=open('appointments_export.csv', 'rb'),
+        filename=f'appointments_{datetime.now().strftime("%Y%m%d")}.csv',
+        caption=f'📅 ייצוא תורים ({len(dm.data["appointments"])} רשומות)'
+    )
+
 # חדש: היסטוריית משתמש (ההזמנות שלי)
 async def show_user_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
@@ -872,6 +904,7 @@ async def main():
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('admin', admin_command))
     app.add_handler(CommandHandler('export_leads', export_leads))
+    app.add_handler(CommandHandler('export_appointments', export_appointments))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda u, c: handle_contact_process(u, c) if any(key in c.user_data for key in ['contact_step', 'appointment_step', 'human_support']) else handle_text(u, c)))
     
