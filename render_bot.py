@@ -110,7 +110,6 @@ async def run_telegram_bot():
             bot_app.add_handler(CommandHandler('start', start))
             bot_app.add_handler(CommandHandler('admin', admin_command))
             bot_app.add_handler(CommandHandler('export_leads', export_leads))
-            bot_app.add_handler(CommandHandler('export_appointments', export_appointments))
             bot_app.add_handler(CallbackQueryHandler(button_handler))
             bot_app.add_handler(MessageHandler(
                 filters.TEXT & ~filters.COMMAND, 

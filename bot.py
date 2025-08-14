@@ -13,9 +13,8 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from telegram.constants import ChatAction
 from activity_reporter import create_reporter
 
 # הגדרת לוגים
@@ -35,32 +34,16 @@ if not BOT_TOKEN:
     sys.exit(1)
 
 # Activity reporter (initialized after environment is loaded)
-class _NoopReporter:
-    def report_activity(self, user_id):
-        return
-
-MONGO_URI = os.environ.get('MONGO_URI')
-SERVICE_ID = os.environ.get('SERVICE_ID', 'local')
-SERVICE_NAME = os.environ.get('SERVICE_NAME', 'RestaurantBot')
-
-if MONGO_URI:
-    reporter = create_reporter(
-        mongodb_uri=MONGO_URI,
-        service_id=SERVICE_ID,
-        service_name=SERVICE_NAME
-    )
-else:
-    reporter = _NoopReporter()
+reporter = create_reporter(
+    mongodb_uri="mongodb+srv://mumin:M43M2TFgLfGvhBwY@muminai.tm6x81b.mongodb.net/?retryWrites=true&w=majority&appName=muminAI",
+    service_id="srv-d2cg2t1r0fns73du6mjg",
+    service_name="Restaurant"
+)
 
 # מחלקה לניהול נתונים
 class DataManager:
     def __init__(self):
         self.data = self.load_data()
-        if 'menu' not in self.data:
-            self.data['menu'] = self.default_menu()
-        if 'orders' not in self.data:
-            self.data['orders'] = []
-        self.save_data()
     
     def load_data(self):
         try:
@@ -82,27 +65,7 @@ class DataManager:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
     
-    def default_menu(self):
-        return [
-            {"id": 1, "name": "פיצה מרגריטה", "price": 48, "tags": ["צמחוני"], "allergens": ["גלוטן", "לקטוז"], "image": "https://via.placeholder.com/800x600?text=Pizza"},
-            {"id": 2, "name": "סלט יווני", "price": 42, "tags": ["צמחוני", "ללא גלוטן"], "allergens": ["אגוזים"], "image": "https://via.placeholder.com/800x600?text=Salad"},
-            {"id": 3, "name": "המבורגר", "price": 64, "tags": [], "allergens": ["גלוטן"], "image": "https://via.placeholder.com/800x600?text=Burger"},
-            {"id": 4, "name": "פסטה ארביאטה", "price": 56, "tags": ["צמחוני", "חריף"], "allergens": ["גלוטן"], "image": "https://via.placeholder.com/800x600?text=Pasta"}
-        ]
-    
     def add_lead(self, user_id, name, phone, business_name='', interest='', source='דמו טלגרם'):
-        # Deduplicate by user_id+phone: update if exists
-        for existing in self.data['leads']:
-            if existing.get('user_id') == user_id and existing.get('phone') == phone:
-                existing.update({
-                    'name': name,
-                    'business_name': business_name,
-                    'interest': interest,
-                    'source': source,
-                    'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                })
-                self.save_data()
-                return existing
         lead = {
             'id': len(self.data['leads']) + 1,
             'user_id': user_id,
@@ -132,22 +95,6 @@ class DataManager:
         self.data['appointments'].append(appointment)
         self.save_data()
         return appointment
-
-    def add_order(self, user_id, items):
-        total = 0
-        for it in items:
-            total += it.get('price', 0) * it.get('qty', 1)
-        order = {
-            'id': len(self.data['orders']) + 1,
-            'user_id': user_id,
-            'items': items,
-            'total': total,
-            'status': 'חדש',
-            'created': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        self.data['orders'].append(order)
-        self.save_data()
-        return order
 
 # יצירת מנהל נתונים גלובלי
 dm = DataManager()
@@ -239,7 +186,7 @@ async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # קביעת תור
 async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    # הזמנת שולחן: בחירת תאריך וגודל קבוצה
+    # תאריכים זמינים לדוגמה
     today = datetime.now()
     dates = []
     for i in range(1, 6):  # 5 ימים הבאים
@@ -248,10 +195,12 @@ async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT
             date.strftime('%d/%m (%a)'), 
             callback_data=f'date_{date.strftime("%Y-%m-%d")}'
         ))
-    keyboard = [dates[i:i+2] for i in range(0, len(dates), 2)]
+    
+    keyboard = [dates[i:i+2] for i in range(0, len(dates), 2)]  # שורות של 2
     keyboard.append([InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')])
+    
     await update.message.reply_text(
-        '📆 הזמנת שולחן – בחרו יום:',
+        'בואו נקבע – זה לוקח חצי דקה 🙂\nבחרו יום פנוי:',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -270,7 +219,6 @@ async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         'נשמח לחזור אליך 👇\nאנא שתף/י את השם הפרטי:'
     )
-    # הצעת שיתוף טלפון בכפתור ייעודי בשלב הטלפון
 
 # חדש: מיקום ופרטי עסק
 async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -326,61 +274,6 @@ async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'רוצה לראות עוד? או לחזור לתפריט:',
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')]])
     )
-
-# === Restaurant minimal handlers ===
-async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
-    items = dm.data.get('menu', [])
-    if not items:
-        await update.message.reply_text('התפריט אינו זמין כעת')
-        return
-    keyboard = []
-    lines = []
-    for item in items:
-        lines.append(f"🍽️ {item['name']} — {item['price']}₪")
-        tags = ', '.join(item.get('tags', []))
-        if tags:
-            lines.append(f"• {tags}")
-        if item.get('allergens'):
-            lines.append(f"אלרגנים: {', '.join(item['allergens'])}")
-        keyboard.append([InlineKeyboardButton(f"➕ הוסף {item['name']}", callback_data=f"add_{item['id']}")])
-        lines.append('')
-    keyboard.append([InlineKeyboardButton('🧺 הצג עגלה', callback_data='cart_review')])
-    await update.message.reply_text('\n'.join(lines).strip(), reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
-    cart = context.user_data.get('cart', {})
-    if not cart:
-        await update.message.reply_text('העגלה ריקה. אפשר להוסיף מנות מהתפריט 🙂')
-        return
-    items = {i['id']: i for i in dm.data.get('menu', [])}
-    total = 0
-    lines = ['🧺 העגלה שלי:\n']
-    kb = []
-    for item_id, qty in cart.items():
-        item = items.get(int(item_id))
-        if not item:
-            continue
-        line_total = item['price'] * qty
-        total += line_total
-        lines.append(f"{item['name']} x{qty} — {line_total}₪")
-        kb.append([InlineKeyboardButton(f"➖ הסר {item['name']}", callback_data=f"remove_{item_id}")])
-    lines.append('')
-    lines.append(f"סה""כ: {total}₪")
-    kb.append([InlineKeyboardButton('✅ בצע הזמנה', callback_data='order_confirm')])
-    kb.append([InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='back_menu')])
-    await update.message.reply_text('\n'.join(lines), reply_markup=InlineKeyboardMarkup(kb))
-
-async def show_delivery_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
-    text = """🚚 משלוחים
-
-• משלוח בטווח 5 ק""מ
-• זמן משוער: 35–50 דק׳
-• תשלום: מזומן/אשראי/קישור
-"""
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='main_menu')]]))
 
 # טיפול בלחיצות על כפתורים
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -458,8 +351,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         selected_date = data.split('_')[1]
         context.user_data['selected_date'] = selected_date
         
-        # שעות זמינות לפי מסעדה
-        times = ['12:00', '12:30', '13:00', '18:00', '19:30', '21:00']
+        # שעות זמינות
+        times = ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00']
         keyboard = []
         for i in range(0, len(times), 3):
             row = [InlineKeyboardButton(time, callback_data=f'time_{time}') for time in times[i:i+3]]
@@ -467,7 +360,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton('⬅️ חזרה לתאריכים', callback_data='back_dates')])
         
         await query.edit_message_text(
-            f'נבחר תאריך: {selected_date}\nבחרו שעה:',
+            f'נבחר תאריך: {selected_date}\nשעה מועדפת?',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     
@@ -494,7 +387,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['appointment_step'] = 'name'
         
         await query.edit_message_text(
-            f'מעולה! 📅 {context.user_data["selected_date"]} בשעה {selected_time}\n\nשם מלא להזמנה:'
+            f'מעולה! 📅 {context.user_data["selected_date"]} בשעה {selected_time}\n\nכדי לאשר, אנא שתף/י שם מלא:'
         )
     
     elif data.startswith('faq_'):
@@ -520,106 +413,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['human_support'] = True
     
-    # אדמין: אישור/דחיית תור
-    elif data.startswith('approve_appt_') or data.startswith('reject_appt_'):
-        if update.effective_user.id != dm.data['settings']['admin_id']:
-            await query.answer('אין הרשאה', show_alert=True)
-            return
-        try:
-            appt_id = int(data.split('_')[-1])
-            for a in dm.data['appointments']:
-                if a.get('id') == appt_id:
-                    if data.startswith('approve_appt_'):
-                        a['status'] = 'אושר'
-                    else:
-                        a['status'] = 'נדחה'
-                    dm.save_data()
-                    # עדכון הלקוח אם אפשר
-                    user_id = a.get('user_id')
-                    if user_id:
-                        try:
-                            status_text = 'אושר' if a['status'] == 'אושר' else 'נדחה'
-                            await context.bot.send_message(user_id, f"עדכון תור #{appt_id}: {status_text}\n📅 {a.get('date','')} ⏰ {a.get('time','')}")
-                        except:
-                            pass
-                    await query.edit_message_text(f"עודכן סטטוס לתור #{appt_id}: {a['status']}")
-                    return
-            await query.answer('תור לא נמצא', show_alert=True)
-        except Exception as e:
-            await query.answer('שגיאה בטיפול', show_alert=True)
-    
-    # === Restaurant cart actions ===
-    elif data.startswith('add_'):
-        item_id = data.split('_')[1]
-        cart = context.user_data.setdefault('cart', {})
-        cart[item_id] = cart.get(item_id, 0) + 1
-        await query.answer(text='נוסף לעגלה ✅', show_alert=False)
-    
-    elif data.startswith('remove_'):
-        item_id = data.split('_')[1]
-        cart = context.user_data.get('cart', {})
-        if item_id in cart:
-            cart[item_id] -= 1
-            if cart[item_id] <= 0:
-                del cart[item_id]
-        await query.answer(text='עודכן בעגלה ✅', show_alert=False)
-        await query.message.delete()
-    
-    elif data == 'cart_review':
-        # show cart summary
-        items_map = {i['id']: i for i in dm.data.get('menu', [])}
-        cart = context.user_data.get('cart', {})
-        if not cart:
-            await query.edit_message_text('העגלה ריקה. אפשר להוסיף מנות מהתפריט 🙂')
-        else:
-            total = 0
-            lines = ['🧺 העגלה שלי:\n']
-            kb = []
-            for item_id, qty in cart.items():
-                item = items_map.get(int(item_id))
-                if not item:
-                    continue
-                line_total = item['price'] * qty
-                total += line_total
-                lines.append(f"{item['name']} x{qty} — {line_total}₪")
-                kb.append([InlineKeyboardButton(f"➖ הסר {item['name']}", callback_data=f"remove_{item_id}")])
-            lines.append('')
-            lines.append(f"סה""כ: {total}₪")
-            kb.append([InlineKeyboardButton('✅ בצע הזמנה', callback_data='order_confirm')])
-            kb.append([InlineKeyboardButton('⬅️ חזרה לתפריט', callback_data='back_menu')])
-            await query.edit_message_text('\n'.join(lines), reply_markup=InlineKeyboardMarkup(kb))
-    
-    elif data == 'order_confirm':
-        items_map = {i['id']: i for i in dm.data.get('menu', [])}
-        cart = context.user_data.get('cart', {})
-        if not cart:
-            await query.answer('העגלה ריקה')
-        else:
-            # build items list
-            items = []
-            for item_id, qty in cart.items():
-                item = items_map.get(int(item_id))
-                if not item:
-                    continue
-                items.append({'id': item['id'], 'name': item['name'], 'price': item['price'], 'qty': qty})
-            order = dm.add_order(update.effective_user.id, items)
-            context.user_data['cart'] = {}
-            # notify admin
-            if dm.data['settings']['admin_id']:
-                try:
-                    details = '\n'.join([f"• {it['name']} x{it['qty']} — {it['price']*it['qty']}₪" for it in order['items']])
-                    await context.bot.send_message(
-                        dm.data['settings']['admin_id'],
-                        f"🍽️ הזמנה חדשה #{order['id']}\n{details}\nסה""כ: {order['total']}₪"
-                    )
-                except:
-                    pass
-            await query.edit_message_text(f"תודה! ההזמנה התקבלה ✅\nמספר הזמנה: {order['id']}\nסה""כ: {order['total']}₪")
-    
-    elif data == 'back_menu':
-        await query.message.delete()
-        await query.message.chat.send_message('תפריט:', reply_markup=None)
- 
     elif data.startswith('int_'):
         # Handle interest area selection
         interest_type = data.split('_')[1]
@@ -762,21 +555,11 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
             )
         
         elif user_data['contact_step'] == 'phone':
-            # ולידציה בסיסית לטלפון ישראלי
-            phone = text.strip()
-            if not re.match(r'^(\+?972|0)?5\d(-?\d){7}$', phone):
-                share_kb = ReplyKeyboardMarkup(
-                    [[KeyboardButton('שתף מספר מהטלפון 📱', request_contact=True)]],
-                    resize_keyboard=True,
-                    one_time_keyboard=True
-                )
-                await update.message.reply_text('מספר טלפון לא תקין. אפשר להקליד שוב או לשתף בלחיצה:', reply_markup=share_kb)
-                return
             # שמירת הליד
             lead = dm.add_lead(
                 user_id=update.effective_user.id,
                 name=user_data['name'],
-                phone=phone,
+                phone=text,
                 business_name=user_data.get('business', ''),
                 interest=user_data.get('interest', ''),
                 source='דמו טלגרם'
@@ -787,13 +570,13 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
                 try:
                     await context.bot.send_message(
                         dm.data['settings']['admin_id'],
-                        f"🔔 ליד חדש!\n\n👤 {lead['name']}\n📞 {phone}\n🏢 {lead['business_name']}\n🎯 {lead['interest']}\n📅 {lead['date']}"
+                        f"🔔 ליד חדש!\n\n👤 {lead['name']}\n📞 {text}\n🏢 {lead['business_name']}\n🎯 {lead['interest']}\n📅 {lead['date']}"
                     )
                 except:
                     pass
             
             await update.message.reply_text(
-                f"תודה! קיבלנו את הפרטים ✅\nמספר בקשה: {lead['id']}",
+                'תודה! קיבלנו את הפרטים ✅\nמנהל יחזור אליך בהקדם.',
                 reply_markup=main_menu_keyboard()
             )
             
@@ -808,35 +591,27 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
             await update.message.reply_text('ומספר טלפון:')
         
         elif user_data['appointment_step'] == 'phone':
-            phone = text.strip()
-            if not re.match(r'^(\+?972|0)?5\d(-?\d){7}$', phone):
-                await update.message.reply_text('מספר טלפון לא תקין. נסו שוב:')
-                return
             # שמירת התור
             appointment = dm.add_appointment(
                 user_id=update.effective_user.id,
                 name=user_data['appointment_name'],
-                phone=phone,
+                phone=text,
                 date=user_data['selected_date'],
                 time=user_data['selected_time']
             )
             
-            # הודעה למנהל עם כפתורי אישור/דחייה
+            # הודעה למנהל
             if dm.data['settings']['admin_id']:
                 try:
-                    approve_cb = f"approve_appt_{appointment['id']}"
-                    reject_cb = f"reject_appt_{appointment['id']}"
-                    kb = InlineKeyboardMarkup([[InlineKeyboardButton('אשר ✅', callback_data=approve_cb), InlineKeyboardButton('דחה ❌', callback_data=reject_cb)]])
                     await context.bot.send_message(
                         dm.data['settings']['admin_id'],
-                        f"📅 בקשת תור חדשה!\n\n👤 {appointment['name']}\n📞 {phone}\n📅 {appointment['date']}\n⏰ {appointment['time']}\n🔢 מזהה: {appointment['id']}",
-                        reply_markup=kb
+                        f"📅 בקשת תור חדשה!\n\n👤 {appointment['name']}\n📞 {text}\n📅 {appointment['date']}\n⏰ {appointment['time']}\n🔢 מזהה: {appointment['id']}"
                     )
                 except:
                     pass
             
             await update.message.reply_text(
-                f'הבקשה נקלטה ✅\n📅 {user_data["selected_date"]} בשעה {user_data["selected_time"]}\nנעדכן כאן כשמאושר.',
+                f'תודה! הזמנה נקלטה ✅\n📅 {user_data["selected_date"]} בשעה {user_data["selected_time"]}\n\nתקבלו אישור כאן בצ\'אט.',
                 reply_markup=main_menu_keyboard()
             )
             
@@ -916,28 +691,6 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         document=open('leads_export.csv', 'rb'),
         filename=f'leads_{datetime.now().strftime("%Y%m%d")}.csv',
         caption=f'📊 ייצוא לידים ({len(dm.data["leads"])} רשומות)'
-    )
-
-async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
-    if update.effective_user.id != dm.data['settings']['admin_id']:
-        return
-    
-    if not dm.data['appointments']:
-        await update.message.reply_text('אין תורים לייצוא')
-        return
-    
-    csv_content = "מזהה,תאריך,שעה,שם,טלפון,שירות,סטטוס\n"
-    for a in dm.data['appointments']:
-        csv_content += f"{a.get('id','')},{a.get('date','')},{a.get('time','')},{a.get('name','')},{a.get('phone','')},{a.get('service','')},{a.get('status','')}\n"
-    
-    with open('appointments_export.csv', 'w', encoding='utf-8') as f:
-        f.write(csv_content)
-    
-    await update.message.reply_document(
-        document=open('appointments_export.csv', 'rb'),
-        filename=f'appointments_{datetime.now().strftime("%Y%m%d")}.csv',
-        caption=f'📅 ייצוא תורים ({len(dm.data["appointments"])} רשומות)'
     )
 
 # חדש: היסטוריית משתמש (ההזמנות שלי)
@@ -1119,7 +872,6 @@ async def main():
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('admin', admin_command))
     app.add_handler(CommandHandler('export_leads', export_leads))
-    app.add_handler(CommandHandler('export_appointments', export_appointments))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda u, c: handle_contact_process(u, c) if any(key in c.user_data for key in ['contact_step', 'appointment_step', 'human_support']) else handle_text(u, c)))
     

@@ -9,16 +9,6 @@
       "interest": "בוט/אוטומציה",
       "source": "דמו טלגרם",
       "date": "2025-08-10 14:30:00"
-    },
-    {
-      "id": 2,
-      "user_id": 111,
-      "name": "שם אחר",
-      "phone": "0501234567",
-      "business_name": "עסק2",
-      "interest": "עניין2",
-      "source": "דמו טלגרם",
-      "date": "2025-08-14 21:52:46"
     }
   ],
   "appointments": [
@@ -39,57 +29,5 @@
     "business_phone": "03-1234567",
     "working_hours": "א׳-ה׳ 09:00-18:00; ו׳ 09:00-13:00; ש׳ סגור",
     "welcome_message": "שלום! 👋\nברוכים הבאים לעוזר העסק בטלגרם. כאן אפשר לראות קטלוג קצר, לקבוע תור/הזמנה, לקבל תשובות מהירות וליצור קשר ישיר.\nאיך אוכל לעזור?"
-  },
-  "menu": [
-    {
-      "id": 1,
-      "name": "פיצה מרגריטה",
-      "price": 48,
-      "tags": [
-        "צמחוני"
-      ],
-      "allergens": [
-        "גלוטן",
-        "לקטוז"
-      ],
-      "image": "https://via.placeholder.com/800x600?text=Pizza"
-    },
-    {
-      "id": 2,
-      "name": "סלט יווני",
-      "price": 42,
-      "tags": [
-        "צמחוני",
-        "ללא גלוטן"
-      ],
-      "allergens": [
-        "אגוזים"
-      ],
-      "image": "https://via.placeholder.com/800x600?text=Salad"
-    },
-    {
-      "id": 3,
-      "name": "המבורגר",
-      "price": 64,
-      "tags": [],
-      "allergens": [
-        "גלוטן"
-      ],
-      "image": "https://via.placeholder.com/800x600?text=Burger"
-    },
-    {
-      "id": 4,
-      "name": "פסטה ארביאטה",
-      "price": 56,
-      "tags": [
-        "צמחוני",
-        "חריף"
-      ],
-      "allergens": [
-        "גלוטן"
-      ],
-      "image": "https://via.placeholder.com/800x600?text=Pasta"
-    }
-  ],
-  "orders": []
+  }
 }

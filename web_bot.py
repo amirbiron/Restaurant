@@ -17,7 +17,7 @@ from threading import Thread
 from bot import (
     start, catalog, quick_qa, contact, appointment, human_support,
     button_handler, handle_text, handle_contact_process,
-    DataManager, BOT_TOKEN, export_appointments
+    DataManager, BOT_TOKEN
 )
 
 # הגדרת לוגים
@@ -104,7 +104,6 @@ def main():
     telegram_app.add_handler(CommandHandler("contact", contact))
     telegram_app.add_handler(CommandHandler("appointment", appointment))
     telegram_app.add_handler(CommandHandler("human", human_support))
-    telegram_app.add_handler(CommandHandler("export_appointments", export_appointments))
     telegram_app.add_handler(CallbackQueryHandler(button_handler))
     telegram_app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
