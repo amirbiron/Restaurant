@@ -143,9 +143,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dm.save_data()
         await update.message.reply_text('🎉 הוגדרת כמנהל הבוט!')
     
-    status_prefix = '🟢 פתוח עכשיו - נענה מיד!' if is_business_open() else '🔴 סגור כרגע - נחזור בשעות הפעילות'
+    if is_business_open():
+        opening_message = '🟢 פתוח עכשיו - נענה מיד!\n\n' + dm.data['settings']['welcome_message']
+    else:
+        opening_message = dm.data['settings']['welcome_message']
     await update.message.reply_text(
-        f"{status_prefix}\n\n" + dm.data['settings']['welcome_message'],
+        opening_message,
         reply_markup=main_menu_keyboard()
     )
 
