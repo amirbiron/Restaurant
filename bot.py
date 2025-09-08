@@ -174,7 +174,7 @@ def faq_keyboard():
 # הודעת פתיחה
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user = update.effective_user
     
     # שמירת מנהל ראשון כאדמין
@@ -195,7 +195,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # טיפול בהודעות טקסט (תפריט ראשי)
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     text = update.message.text
     
     if text == '🛍️ קטלוג קצר':
@@ -221,7 +221,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # קטלוג
 async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     await update.message.reply_text(
         get_catalog_text(),
         parse_mode='Markdown',
@@ -231,7 +231,7 @@ async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # קביעת תור
 async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     # תאריכים זמינים לדוגמה
     today = datetime.now()
     dates = []
@@ -253,7 +253,7 @@ async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT
 # שאלות ותמיכה
 async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     await update.message.reply_text(
         'שאלות נפוצות – לחצו לקבלת מענה מיידי:',
         reply_markup=faq_keyboard()
@@ -262,7 +262,7 @@ async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # צור קשר
 async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     context.user_data['contact_step'] = 'name'
     await update.message.reply_text(
         'נשמח לחזור אליך 👇\nאנא שתף/י את השם הפרטי:'
@@ -271,7 +271,7 @@ async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # חדש: מיקום ופרטי עסק
 async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     latitude = 32.0853
     longitude = 34.7818
     address = 'רחוב הרצל 15, תל אביב'
@@ -296,7 +296,7 @@ async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # חדש: המלצות לקוחות
 async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     # אלבום ביקורות כתמונות עם כיתובים
     media = [
         InputMediaPhoto(
@@ -328,7 +328,7 @@ async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # טיפול בלחיצות על כפתורים
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     query = update.callback_query
     await query.answer()
     
@@ -580,7 +580,7 @@ def get_catalog_text() -> str:
 # טיפול בהודעות בתהליך איסוף מידע
 async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user_data = context.user_data
     text = update.message.text
     
@@ -689,45 +689,30 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
 
 # פונקציות סטטיסטיקות משתמשים
 def get_user_stats():
-    """חישוב סטטיסטיקות משתמשים לשבוע וחודש האחרון"""
+    """חישוב סטטיסטיקות משתמשים פעילים לשבוע וחודש האחרון"""
     from datetime import datetime, timedelta
     
     now = datetime.now()
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
     
-    # משתמשים ייחודיים בשבוע האחרון
-    weekly_users = set()
-    # משתמשים ייחודיים בחודש האחרון
-    monthly_users = set()
+    weekly_users = 0
+    monthly_users = 0
     
-    # בדיקת לידים
-    for lead in dm.data.get('leads', []):
+    # בדיקת פעילות משתמשים מנתוני הפעילות המקומיים
+    for user_id, activity in dm.data.get('user_activity', {}).items():
         try:
-            lead_date = datetime.strptime(lead['date'], '%Y-%m-%d %H:%M:%S')
-            user_id = lead.get('user_id')
-            if user_id:
-                if lead_date >= week_ago:
-                    weekly_users.add(user_id)
-                if lead_date >= month_ago:
-                    monthly_users.add(user_id)
+            last_activity = datetime.strptime(activity['last_activity'], '%Y-%m-%d %H:%M:%S')
+            
+            if last_activity >= week_ago:
+                weekly_users += 1
+            if last_activity >= month_ago:
+                monthly_users += 1
+                
         except (ValueError, KeyError):
             continue
     
-    # בדיקת תורים
-    for appointment in dm.data.get('appointments', []):
-        try:
-            appt_date = datetime.strptime(appointment['created'], '%Y-%m-%d %H:%M:%S')
-            user_id = appointment.get('user_id')
-            if user_id:
-                if appt_date >= week_ago:
-                    weekly_users.add(user_id)
-                if appt_date >= month_ago:
-                    monthly_users.add(user_id)
-        except (ValueError, KeyError):
-            continue
-    
-    return len(weekly_users), len(monthly_users)
+    return weekly_users, monthly_users
 
 def get_detailed_weekly_stats():
     """סטטיסטיקות מפורטות לשבוע האחרון"""
@@ -792,7 +777,7 @@ def get_detailed_monthly_stats():
 # פקודות מנהל
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user_id = update.effective_user.id
     
     if user_id != dm.data['settings']['admin_id']:
@@ -818,7 +803,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • לידים: {leads_count}
 • תורים: {appointments_count}
 
-👥 **משתמשים פעילים:**
+👥 **משתמשים שהשתמשו בבוט:**
 • שבוע אחרון: {weekly_users} משתמשים
 • חודש אחרון: {monthly_users} משתמשים
 
@@ -843,7 +828,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ייצוא נתונים
 async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     if update.effective_user.id != dm.data['settings']['admin_id']:
         return
     
@@ -869,7 +854,7 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # חדש: ייצוא תורים
 async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     if update.effective_user.id != dm.data['settings']['admin_id']:
         return
     
@@ -902,7 +887,7 @@ async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE
 # חדש: היסטוריית משתמש (ההזמנות שלי)
 async def show_user_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
-    log_activity(update.effective_user)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user_id = update.effective_user.id
     text = get_user_history(user_id)
     await update.message.reply_text(
