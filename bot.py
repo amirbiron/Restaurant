@@ -95,9 +95,54 @@ class DataManager:
         self.data['appointments'].append(appointment)
         self.save_data()
         return appointment
+    
+    def log_user_activity_mongodb(self, user_id, username=None, first_name=None):
+        """רישום פעילות משתמש ב-MongoDB"""
+        try:
+            from pymongo import MongoClient
+            from datetime import datetime, timezone
+            
+            # השתמש באותו חיבור מונגו כמו reporter
+            mongodb_uri = "mongodb+srv://mumin:M43M2TFgLfGvhBwY@muminai.tm6x81b.mongodb.net/?retryWrites=true&w=majority&appName=muminAI"
+            client = MongoClient(mongodb_uri)
+            db = client["telegram_bot_stats"]
+            
+            now = datetime.now(timezone.utc)
+            
+            # עדכון או יצירת רשומת משתמש
+            db.user_activity.update_one(
+                {"user_id": str(user_id)},
+                {
+                    "$set": {
+                        "last_activity": now,
+                        "username": username,
+                        "first_name": first_name
+                    },
+                    "$inc": {"activity_count": 1},
+                    "$setOnInsert": {"first_seen": now}
+                },
+                upsert=True
+            )
+            
+        except Exception as e:
+            # שקט - אל תיכשל את הבוט אם יש בעיה
+            pass
 
 # יצירת מנהל נתונים גלובלי
 dm = DataManager()
+
+# פונקציה לרישום פעילות במקביל ל-reporter.report_activity
+def log_activity(user):
+    """רישום פעילות משתמש ב-MongoDB לצורך סטטיסטיקות"""
+    try:
+        dm.log_user_activity_mongodb(
+            user_id=user.id,
+            username=user.username,
+            first_name=user.first_name
+        )
+    except Exception as e:
+        # שקט - אל תיכשל את הבוט אם יש בעיה ברישום
+        pass
 
 # פונקציות עזר לתפריטים
 def main_menu_keyboard():
@@ -135,6 +180,7 @@ def faq_keyboard():
 # הודעת פתיחה
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user = update.effective_user
     
     # שמירת מנהל ראשון כאדמין
@@ -155,6 +201,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # טיפול בהודעות טקסט (תפריט ראשי)
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     text = update.message.text
     
     if text == '🛍️ קטלוג קצר':
@@ -180,6 +227,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # קטלוג
 async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     await update.message.reply_text(
         get_catalog_text(),
         parse_mode='Markdown',
@@ -189,6 +237,7 @@ async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # קביעת תור
 async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     # תאריכים זמינים לדוגמה
     today = datetime.now()
     dates = []
@@ -210,6 +259,7 @@ async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT
 # שאלות ותמיכה
 async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     await update.message.reply_text(
         'שאלות נפוצות – לחצו לקבלת מענה מיידי:',
         reply_markup=faq_keyboard()
@@ -218,6 +268,7 @@ async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # צור קשר
 async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     context.user_data['contact_step'] = 'name'
     await update.message.reply_text(
         'נשמח לחזור אליך 👇\nאנא שתף/י את השם הפרטי:'
@@ -226,6 +277,7 @@ async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # חדש: מיקום ופרטי עסק
 async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     latitude = 32.0853
     longitude = 34.7818
     address = 'רחוב הרצל 15, תל אביב'
@@ -250,6 +302,7 @@ async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # חדש: המלצות לקוחות
 async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     # אלבום ביקורות כתמונות עם כיתובים
     media = [
         InputMediaPhoto(
@@ -281,6 +334,7 @@ async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # טיפול בלחיצות על כפתורים
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     query = update.callback_query
     await query.answer()
     
@@ -532,6 +586,7 @@ def get_catalog_text() -> str:
 # טיפול בהודעות בתהליך איסוף מידע
 async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user_data = context.user_data
     text = update.message.text
     
@@ -638,18 +693,117 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
         )
         context.user_data.clear()
 
+# פונקציות סטטיסטיקות משתמשים
+def get_user_stats():
+    """חישוב סטטיסטיקות משתמשים פעילים לשבוע וחודש האחרון מ-MongoDB"""
+    from datetime import datetime, timedelta, timezone
+    
+    try:
+        from pymongo import MongoClient
+        
+        # השתמש באותו חיבור מונגו
+        mongodb_uri = "mongodb+srv://mumin:M43M2TFgLfGvhBwY@muminai.tm6x81b.mongodb.net/?retryWrites=true&w=majority&appName=muminAI"
+        client = MongoClient(mongodb_uri)
+        db = client["telegram_bot_stats"]
+        
+        now = datetime.now(timezone.utc)
+        week_ago = now - timedelta(days=7)
+        month_ago = now - timedelta(days=30)
+        
+        # ספירת משתמשים פעילים בשבוע האחרון
+        weekly_users = db.user_activity.count_documents({
+            "last_activity": {"$gte": week_ago}
+        })
+        
+        # ספירת משתמשים פעילים בחודש האחרון
+        monthly_users = db.user_activity.count_documents({
+            "last_activity": {"$gte": month_ago}
+        })
+        
+        return weekly_users, monthly_users
+        
+    except Exception as e:
+        # אם יש בעיה עם MongoDB, החזר 0
+        return 0, 0
+
+def get_detailed_weekly_stats():
+    """סטטיסטיקות מפורטות לשבוע האחרון"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    week_ago = now - timedelta(days=7)
+    
+    weekly_leads = 0
+    weekly_appointments = 0
+    
+    # ספירת לידים בשבוע האחרון
+    for lead in dm.data.get('leads', []):
+        try:
+            lead_date = datetime.strptime(lead['date'], '%Y-%m-%d %H:%M:%S')
+            if lead_date >= week_ago:
+                weekly_leads += 1
+        except (ValueError, KeyError):
+            continue
+    
+    # ספירת תורים בשבוע האחרון
+    for appointment in dm.data.get('appointments', []):
+        try:
+            appt_date = datetime.strptime(appointment['created'], '%Y-%m-%d %H:%M:%S')
+            if appt_date >= week_ago:
+                weekly_appointments += 1
+        except (ValueError, KeyError):
+            continue
+    
+    return weekly_leads, weekly_appointments
+
+def get_detailed_monthly_stats():
+    """סטטיסטיקות מפורטות לחודש האחרון"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    month_ago = now - timedelta(days=30)
+    
+    monthly_leads = 0
+    monthly_appointments = 0
+    
+    # ספירת לידים בחודש האחרון
+    for lead in dm.data.get('leads', []):
+        try:
+            lead_date = datetime.strptime(lead['date'], '%Y-%m-%d %H:%M:%S')
+            if lead_date >= month_ago:
+                monthly_leads += 1
+        except (ValueError, KeyError):
+            continue
+    
+    # ספירת תורים בחודש האחרון
+    for appointment in dm.data.get('appointments', []):
+        try:
+            appt_date = datetime.strptime(appointment['created'], '%Y-%m-%d %H:%M:%S')
+            if appt_date >= month_ago:
+                monthly_appointments += 1
+        except (ValueError, KeyError):
+            continue
+    
+    return monthly_leads, monthly_appointments
+
 # פקודות מנהל
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user_id = update.effective_user.id
     
     if user_id != dm.data['settings']['admin_id']:
         await update.message.reply_text('❌ אין הרשאה')
         return
     
-    # סטטיסטיקות
+    # סטטיסטיקות כלליות
     leads_count = len(dm.data['leads'])
     appointments_count = len(dm.data['appointments'])
+    
+    # סטטיסטיקות משתמשים
+    weekly_users, monthly_users = get_user_stats()
+    weekly_leads, weekly_appointments = get_detailed_weekly_stats()
+    monthly_leads, monthly_appointments = get_detailed_monthly_stats()
     
     # לידים אחרונים
     recent_leads = dm.data['leads'][-5:] if leads_count > 0 else []
@@ -657,9 +811,21 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     admin_text = f"""📊 **פאנל מנהל**
 
-📈 **סטטיסטיקות:**
+📈 **סטטיסטיקות כלליות:**
 • לידים: {leads_count}
 • תורים: {appointments_count}
+
+👥 **משתמשים שהשתמשו בבוט:**
+• שבוע אחרון: {weekly_users} משתמשים
+• חודש אחרון: {monthly_users} משתמשים
+
+📊 **פעילות שבוע אחרון:**
+• לידים חדשים: {weekly_leads}
+• תורים חדשים: {weekly_appointments}
+
+📊 **פעילות חודש אחרון:**
+• לידים חדשים: {monthly_leads}
+• תורים חדשים: {monthly_appointments}
 
 📝 **לידים אחרונים:**
 {leads_text if leads_text else 'אין לידים עדיין'}
@@ -674,6 +840,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ייצוא נתונים
 async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     if update.effective_user.id != dm.data['settings']['admin_id']:
         return
     
@@ -699,6 +866,7 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # חדש: ייצוא תורים
 async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     if update.effective_user.id != dm.data['settings']['admin_id']:
         return
     
@@ -731,6 +899,7 @@ async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE
 # חדש: היסטוריית משתמש (ההזמנות שלי)
 async def show_user_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)  # מעקב מקומי לסטטיסטיקות
     user_id = update.effective_user.id
     text = get_user_history(user_id)
     await update.message.reply_text(
