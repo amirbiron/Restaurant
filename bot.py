@@ -638,6 +638,108 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
         )
         context.user_data.clear()
 
+# פונקציות סטטיסטיקות משתמשים
+def get_user_stats():
+    """חישוב סטטיסטיקות משתמשים לשבוע וחודש האחרון"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+    
+    # משתמשים ייחודיים בשבוע האחרון
+    weekly_users = set()
+    # משתמשים ייחודיים בחודש האחרון
+    monthly_users = set()
+    
+    # בדיקת לידים
+    for lead in dm.data.get('leads', []):
+        try:
+            lead_date = datetime.strptime(lead['date'], '%Y-%m-%d %H:%M:%S')
+            user_id = lead.get('user_id')
+            if user_id:
+                if lead_date >= week_ago:
+                    weekly_users.add(user_id)
+                if lead_date >= month_ago:
+                    monthly_users.add(user_id)
+        except (ValueError, KeyError):
+            continue
+    
+    # בדיקת תורים
+    for appointment in dm.data.get('appointments', []):
+        try:
+            appt_date = datetime.strptime(appointment['created'], '%Y-%m-%d %H:%M:%S')
+            user_id = appointment.get('user_id')
+            if user_id:
+                if appt_date >= week_ago:
+                    weekly_users.add(user_id)
+                if appt_date >= month_ago:
+                    monthly_users.add(user_id)
+        except (ValueError, KeyError):
+            continue
+    
+    return len(weekly_users), len(monthly_users)
+
+def get_detailed_weekly_stats():
+    """סטטיסטיקות מפורטות לשבוע האחרון"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    week_ago = now - timedelta(days=7)
+    
+    weekly_leads = 0
+    weekly_appointments = 0
+    
+    # ספירת לידים בשבוע האחרון
+    for lead in dm.data.get('leads', []):
+        try:
+            lead_date = datetime.strptime(lead['date'], '%Y-%m-%d %H:%M:%S')
+            if lead_date >= week_ago:
+                weekly_leads += 1
+        except (ValueError, KeyError):
+            continue
+    
+    # ספירת תורים בשבוע האחרון
+    for appointment in dm.data.get('appointments', []):
+        try:
+            appt_date = datetime.strptime(appointment['created'], '%Y-%m-%d %H:%M:%S')
+            if appt_date >= week_ago:
+                weekly_appointments += 1
+        except (ValueError, KeyError):
+            continue
+    
+    return weekly_leads, weekly_appointments
+
+def get_detailed_monthly_stats():
+    """סטטיסטיקות מפורטות לחודש האחרון"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    month_ago = now - timedelta(days=30)
+    
+    monthly_leads = 0
+    monthly_appointments = 0
+    
+    # ספירת לידים בחודש האחרון
+    for lead in dm.data.get('leads', []):
+        try:
+            lead_date = datetime.strptime(lead['date'], '%Y-%m-%d %H:%M:%S')
+            if lead_date >= month_ago:
+                monthly_leads += 1
+        except (ValueError, KeyError):
+            continue
+    
+    # ספירת תורים בחודש האחרון
+    for appointment in dm.data.get('appointments', []):
+        try:
+            appt_date = datetime.strptime(appointment['created'], '%Y-%m-%d %H:%M:%S')
+            if appt_date >= month_ago:
+                monthly_appointments += 1
+        except (ValueError, KeyError):
+            continue
+    
+    return monthly_leads, monthly_appointments
+
 # פקודות מנהל
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reporter.report_activity(update.effective_user.id)
@@ -647,9 +749,14 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ אין הרשאה')
         return
     
-    # סטטיסטיקות
+    # סטטיסטיקות כלליות
     leads_count = len(dm.data['leads'])
     appointments_count = len(dm.data['appointments'])
+    
+    # סטטיסטיקות משתמשים
+    weekly_users, monthly_users = get_user_stats()
+    weekly_leads, weekly_appointments = get_detailed_weekly_stats()
+    monthly_leads, monthly_appointments = get_detailed_monthly_stats()
     
     # לידים אחרונים
     recent_leads = dm.data['leads'][-5:] if leads_count > 0 else []
@@ -657,9 +764,21 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     admin_text = f"""📊 **פאנל מנהל**
 
-📈 **סטטיסטיקות:**
+📈 **סטטיסטיקות כלליות:**
 • לידים: {leads_count}
 • תורים: {appointments_count}
+
+👥 **משתמשים פעילים:**
+• שבוע אחרון: {weekly_users} משתמשים
+• חודש אחרון: {monthly_users} משתמשים
+
+📊 **פעילות שבוע אחרון:**
+• לידים חדשים: {weekly_leads}
+• תורים חדשים: {weekly_appointments}
+
+📊 **פעילות חודש אחרון:**
+• לידים חדשים: {monthly_leads}
+• תורים חדשים: {monthly_appointments}
 
 📝 **לידים אחרונים:**
 {leads_text if leads_text else 'אין לידים עדיין'}
