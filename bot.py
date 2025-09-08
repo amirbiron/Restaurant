@@ -53,7 +53,6 @@ class DataManager:
             return {
                 'leads': [],
                 'appointments': [],
-                'user_activity': {},  # מעקב פעילות משתמשים מקומי
                 'settings': {
                     'admin_id': None,
                     'business_phone': '03-1234567',
@@ -97,39 +96,46 @@ class DataManager:
         self.save_data()
         return appointment
     
-    def log_user_activity(self, user_id, username=None, first_name=None):
-        """רישום פעילות משתמש מקומי"""
-        user_id = str(user_id)  # המרה למחרוזת לעקביות
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # יצירת או עדכון רשומת משתמש
-        if user_id not in self.data['user_activity']:
-            self.data['user_activity'][user_id] = {
-                'first_seen': now,
-                'last_activity': now,
-                'activity_count': 1,
-                'username': username,
-                'first_name': first_name
-            }
-        else:
-            self.data['user_activity'][user_id]['last_activity'] = now
-            self.data['user_activity'][user_id]['activity_count'] += 1
-            # עדכון שם אם השתנה
-            if username:
-                self.data['user_activity'][user_id]['username'] = username
-            if first_name:
-                self.data['user_activity'][user_id]['first_name'] = first_name
-        
-        self.save_data()
+    def log_user_activity_mongodb(self, user_id, username=None, first_name=None):
+        """רישום פעילות משתמש ב-MongoDB"""
+        try:
+            from pymongo import MongoClient
+            from datetime import datetime, timezone
+            
+            # השתמש באותו חיבור מונגו כמו reporter
+            mongodb_uri = "mongodb+srv://mumin:M43M2TFgLfGvhBwY@muminai.tm6x81b.mongodb.net/?retryWrites=true&w=majority&appName=muminAI"
+            client = MongoClient(mongodb_uri)
+            db = client["telegram_bot_stats"]
+            
+            now = datetime.now(timezone.utc)
+            
+            # עדכון או יצירת רשומת משתמש
+            db.user_activity.update_one(
+                {"user_id": str(user_id)},
+                {
+                    "$set": {
+                        "last_activity": now,
+                        "username": username,
+                        "first_name": first_name
+                    },
+                    "$inc": {"activity_count": 1},
+                    "$setOnInsert": {"first_seen": now}
+                },
+                upsert=True
+            )
+            
+        except Exception as e:
+            # שקט - אל תיכשל את הבוט אם יש בעיה
+            pass
 
 # יצירת מנהל נתונים גלובלי
 dm = DataManager()
 
-# פונקציה לרישום פעילות (מחליפה את reporter.report_activity)
+# פונקציה לרישום פעילות במקביל ל-reporter.report_activity
 def log_activity(user):
-    """רישום פעילות משתמש - מחליף את reporter.report_activity"""
+    """רישום פעילות משתמש ב-MongoDB לצורך סטטיסטיקות"""
     try:
-        dm.log_user_activity(
+        dm.log_user_activity_mongodb(
             user_id=user.id,
             username=user.username,
             first_name=user.first_name
@@ -689,30 +695,36 @@ async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_T
 
 # פונקציות סטטיסטיקות משתמשים
 def get_user_stats():
-    """חישוב סטטיסטיקות משתמשים פעילים לשבוע וחודש האחרון"""
-    from datetime import datetime, timedelta
+    """חישוב סטטיסטיקות משתמשים פעילים לשבוע וחודש האחרון מ-MongoDB"""
+    from datetime import datetime, timedelta, timezone
     
-    now = datetime.now()
-    week_ago = now - timedelta(days=7)
-    month_ago = now - timedelta(days=30)
-    
-    weekly_users = 0
-    monthly_users = 0
-    
-    # בדיקת פעילות משתמשים מנתוני הפעילות המקומיים
-    for user_id, activity in dm.data.get('user_activity', {}).items():
-        try:
-            last_activity = datetime.strptime(activity['last_activity'], '%Y-%m-%d %H:%M:%S')
-            
-            if last_activity >= week_ago:
-                weekly_users += 1
-            if last_activity >= month_ago:
-                monthly_users += 1
-                
-        except (ValueError, KeyError):
-            continue
-    
-    return weekly_users, monthly_users
+    try:
+        from pymongo import MongoClient
+        
+        # השתמש באותו חיבור מונגו
+        mongodb_uri = "mongodb+srv://mumin:M43M2TFgLfGvhBwY@muminai.tm6x81b.mongodb.net/?retryWrites=true&w=majority&appName=muminAI"
+        client = MongoClient(mongodb_uri)
+        db = client["telegram_bot_stats"]
+        
+        now = datetime.now(timezone.utc)
+        week_ago = now - timedelta(days=7)
+        month_ago = now - timedelta(days=30)
+        
+        # ספירת משתמשים פעילים בשבוע האחרון
+        weekly_users = db.user_activity.count_documents({
+            "last_activity": {"$gte": week_ago}
+        })
+        
+        # ספירת משתמשים פעילים בחודש האחרון
+        monthly_users = db.user_activity.count_documents({
+            "last_activity": {"$gte": month_ago}
+        })
+        
+        return weekly_users, monthly_users
+        
+    except Exception as e:
+        # אם יש בעיה עם MongoDB, החזר 0
+        return 0, 0
 
 def get_detailed_weekly_stats():
     """סטטיסטיקות מפורטות לשבוע האחרון"""
