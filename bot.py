@@ -53,6 +53,7 @@ class DataManager:
             return {
                 'leads': [],
                 'appointments': [],
+                'user_activity': {},  # מעקב פעילות משתמשים מקומי
                 'settings': {
                     'admin_id': None,
                     'business_phone': '03-1234567',
@@ -95,9 +96,47 @@ class DataManager:
         self.data['appointments'].append(appointment)
         self.save_data()
         return appointment
+    
+    def log_user_activity(self, user_id, username=None, first_name=None):
+        """רישום פעילות משתמש מקומי"""
+        user_id = str(user_id)  # המרה למחרוזת לעקביות
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # יצירת או עדכון רשומת משתמש
+        if user_id not in self.data['user_activity']:
+            self.data['user_activity'][user_id] = {
+                'first_seen': now,
+                'last_activity': now,
+                'activity_count': 1,
+                'username': username,
+                'first_name': first_name
+            }
+        else:
+            self.data['user_activity'][user_id]['last_activity'] = now
+            self.data['user_activity'][user_id]['activity_count'] += 1
+            # עדכון שם אם השתנה
+            if username:
+                self.data['user_activity'][user_id]['username'] = username
+            if first_name:
+                self.data['user_activity'][user_id]['first_name'] = first_name
+        
+        self.save_data()
 
 # יצירת מנהל נתונים גלובלי
 dm = DataManager()
+
+# פונקציה לרישום פעילות (מחליפה את reporter.report_activity)
+def log_activity(user):
+    """רישום פעילות משתמש - מחליף את reporter.report_activity"""
+    try:
+        dm.log_user_activity(
+            user_id=user.id,
+            username=user.username,
+            first_name=user.first_name
+        )
+    except Exception as e:
+        # שקט - אל תיכשל את הבוט אם יש בעיה ברישום
+        pass
 
 # פונקציות עזר לתפריטים
 def main_menu_keyboard():
@@ -134,7 +173,7 @@ def faq_keyboard():
 
 # הודעת פתיחה
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     user = update.effective_user
     
     # שמירת מנהל ראשון כאדמין
@@ -154,7 +193,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # טיפול בהודעות טקסט (תפריט ראשי)
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     text = update.message.text
     
     if text == '🛍️ קטלוג קצר':
@@ -179,7 +218,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # קטלוג
 async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     await update.message.reply_text(
         get_catalog_text(),
         parse_mode='Markdown',
@@ -188,7 +227,7 @@ async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # קביעת תור
 async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     # תאריכים זמינים לדוגמה
     today = datetime.now()
     dates = []
@@ -209,7 +248,7 @@ async def show_appointment_booking(update: Update, context: ContextTypes.DEFAULT
 
 # שאלות ותמיכה
 async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     await update.message.reply_text(
         'שאלות נפוצות – לחצו לקבלת מענה מיידי:',
         reply_markup=faq_keyboard()
@@ -217,7 +256,7 @@ async def show_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # צור קשר
 async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     context.user_data['contact_step'] = 'name'
     await update.message.reply_text(
         'נשמח לחזור אליך 👇\nאנא שתף/י את השם הפרטי:'
@@ -225,7 +264,7 @@ async def show_contact_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # חדש: מיקום ופרטי עסק
 async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     latitude = 32.0853
     longitude = 34.7818
     address = 'רחוב הרצל 15, תל אביב'
@@ -249,7 +288,7 @@ async def show_location_info(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # חדש: המלצות לקוחות
 async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     # אלבום ביקורות כתמונות עם כיתובים
     media = [
         InputMediaPhoto(
@@ -280,7 +319,7 @@ async def show_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # טיפול בלחיצות על כפתורים
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     query = update.callback_query
     await query.answer()
     
@@ -531,7 +570,7 @@ def get_catalog_text() -> str:
 
 # טיפול בהודעות בתהליך איסוף מידע
 async def handle_contact_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     user_data = context.user_data
     text = update.message.text
     
@@ -742,7 +781,7 @@ def get_detailed_monthly_stats():
 
 # פקודות מנהל
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     user_id = update.effective_user.id
     
     if user_id != dm.data['settings']['admin_id']:
@@ -792,7 +831,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ייצוא נתונים
 async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     if update.effective_user.id != dm.data['settings']['admin_id']:
         return
     
@@ -817,7 +856,7 @@ async def export_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # חדש: ייצוא תורים
 async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     if update.effective_user.id != dm.data['settings']['admin_id']:
         return
     
@@ -849,7 +888,7 @@ async def export_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # חדש: היסטוריית משתמש (ההזמנות שלי)
 async def show_user_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reporter.report_activity(update.effective_user.id)
+    log_activity(update.effective_user)
     user_id = update.effective_user.id
     text = get_user_history(user_id)
     await update.message.reply_text(
